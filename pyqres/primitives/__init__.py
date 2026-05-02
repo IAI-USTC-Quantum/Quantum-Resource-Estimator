@@ -48,6 +48,9 @@ from .measurement import (
 
 from .debug import DebugPrimitive, CheckNan, CheckNormalization
 
+# Intermediate / QEC-compiler layer
+from .intermediate import MCX, ADD, PLUS_ONE, REFLECT, MOD_ADD, MOD_MUL
+
 __all__ = [
     # Gates
     "Hadamard", "Hadamard_NDigits",
@@ -89,4 +92,7 @@ __all__ = [
     "Prob", "StatePrint",
     # Debug
     "DebugPrimitive", "CheckNan", "CheckNormalization",
+    # Intermediate / QEC-compiler layer
+    "MCX", "ADD", "PLUS_ONE", "REFLECT",
+    "MOD_ADD", "MOD_MUL",
 ]
