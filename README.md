@@ -614,6 +614,10 @@ pyqres 侧的联调测试覆盖：
 pytest tests/test_qec_lowering.py tests/test_qec_shor.py -q
 ```
 
+这些测试需要当前环境能 import `qec_compiler`。在只安装
+Quantum-Resource-Estimator 的 standalone CI 环境中，它们会作为跨仓库集成测试被
+pytest skip；开发联调时请先安装或把 QEC-Compiler checkout 加入 `PYTHONPATH`。
+
 运行 pyqres 全量回归：
 
 ```bash

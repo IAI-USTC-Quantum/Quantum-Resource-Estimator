@@ -11,6 +11,11 @@ from __future__ import annotations
 
 import pytest
 
+pytest.importorskip(
+    "qec_compiler",
+    reason="qec_compiler is required for QEC integration tests",
+)
+
 from pyqres.core.metadata import RegisterMetadata
 
 
