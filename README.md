@@ -556,6 +556,78 @@ op.traverse(counter)
 print(f"T-count: {counter.get_result()}")
 ```
 
+## QEC-Compiler 联调
+
+pyqres 可以把支持的 `Operation` 树 lowering 为 QEC-Compiler 的
+`AbstractCircuit`。推荐入口是：
+
+```python
+from pyqres.core.lowering import to_abstract_circuit
+from pyqres.core.metadata import RegisterMetadata
+from pyqres.primitives import Hadamard
+
+RegisterMetadata.get_register_metadata().declare_register("q", 1)
+circuit = to_abstract_circuit(Hadamard(["q"]))
+```
+
+底层由 `QECLoweringVisitor` 完成寄存器分配、controller/dagger 传播和
+`AbstractGate` 生成。未实现的核心 primitive 会 fail closed，抛出
+`UnsupportedQECPrimitive`，避免把 QRAM、自定义算术或未验证条件旋转静默当成
+no-op。
+
+### 中间层 primitive
+
+当前 pyqres 公开导出的 QEC 中间层 primitive 包括：
+
+| Primitive | QEC gate | 语义 |
+|---|---|---|
+| `MCX` | `MCX` | 多控制 X，最后一个寄存器是 target。 |
+| `ADD` | `ADD(n)` | `|a>|b> -> |a>|a+b mod 2^n>`，QEC pass 分配 clean carry。 |
+| `PLUS_ONE` | `PLUS_ONE(n)` | 寄存器加一，模 `2^n`。 |
+| `REFLECT` | `REFLECT(n)` | 多比特反射。 |
+| `MOD_ADD` | `MOD_ADD(N)` | clean modular add: `|a>|b>|0> -> |a>|a+b mod N>|0>`。 |
+| `MOD_MUL` | `MOD_MUL(c,N)` | clean modular multiply: `|x>|0>|0> -> |c*x mod N>|0>|0>`。 |
+
+这些 primitive 的 schema 位于：
+
+```text
+pyqres/dsl/schemas/primitives/intermediate.primitive.yaml
+```
+
+`MOD_ADD` / `MOD_MUL` 的 QEC lowering 目前采用 polynomial-size
+ripple/comparator/modular-adder baseline，用于小规模 Shor/QDA 联调和正确性验证；
+它不是最终性能优化实现。
+
+### 验证流程
+
+pyqres 侧的联调测试覆盖：
+
+- `to_abstract_circuit()` 公开入口
+- intermediate primitive 导出和 lowering
+- unsupported primitive fail-closed
+- Shor `ExpMod -> CMUL_MOD_N`
+- QDA-Tridiagonal / `WalkS_Primitive` lowering 到 QEC pipeline
+
+运行定向联调：
+
+```bash
+pytest tests/test_qec_lowering.py tests/test_qec_shor.py -q
+```
+
+这些测试需要当前环境能 import `qec_compiler`。在只安装
+Quantum-Resource-Estimator 的 standalone CI 环境中，它们会作为跨仓库集成测试被
+pytest skip；开发联调时请先安装或把 QEC-Compiler checkout 加入 `PYTHONPATH`。
+
+运行 pyqres 全量回归：
+
+```bash
+pytest -q
+```
+
+QEC-Compiler 侧还会对 `ADD`、`MOD_ADD`、`MOD_MUL`、`CMUL_MOD_N` 做小规模
+truth-table 检查。修改中间层 primitive 或 QEC lowering contract 时，需要同时
+运行 QEC-Compiler 的 arithmetic 测试。
+
 ## 算法实现
 
 Quantum-Resource-Estimator 实现了 QRAM-Simulator 文档中的主要量子算法，分为 **手写实现**（`algorithms/`）和 **DSL 生成**（`generated/`）两类。
@@ -863,4 +935,3 @@ impl:
 ```bash
 pyqres compile --lib my_libs/custom.yml
 ```
-

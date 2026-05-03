@@ -66,6 +66,27 @@ class ToffoliCountEstimator(ResourceEstimator):
         return "Toffoli-count"
 
 
+class QECEstimator(ResourceEstimator):
+    """Estimator that lowers to QEC-compiler AbstractCircuit."""
+    def create_visitor(self):
+        from .qec_lowering import QECLoweringVisitor
+        return QECLoweringVisitor()
+
+    @property
+    def name(self):
+        return "qec-compilation"
+
+
+def to_abstract_circuit(operation):
+    """Lower a pyqres Operation tree to a QEC AbstractCircuit.
+
+    Requires qec-compiler to be installed.
+    """
+    from .qec_lowering import QECLoweringVisitor
+    visitor = QECLoweringVisitor()
+    return visitor.build_circuit(operation)
+
+
 from .visitor import TCounter, TDepthCounter, ToffoliCounter
 from .simulator import SimulatorVisitor
 

@@ -52,7 +52,7 @@ class TestPlusOneOverflow:
         # PlusOneOverflow with cond_value=1 is NOT the same as cond_value=2
         assert getattr(PlusOneOverflow, '__self_conjugate__', True) is False
 
-    def test_dagger_flips_condition(self):
+    def test_dagger_marks_inverse_operation(self):
         from pyqres.core.metadata import RegisterMetadata
         RegisterMetadata.get_register_metadata().declare_register('main', 4)
         RegisterMetadata.get_register_metadata().declare_register('overflow', 1)
@@ -61,7 +61,8 @@ class TestPlusOneOverflow:
             reg_list=['main', 'overflow'], param_list=[1])
         backward = forward.dagger()
 
-        assert backward.cond_value == 2
+        assert backward.dagger_flag is True
+        assert backward.cond_value == 1
         assert backward.main_reg == 'main'
         assert backward.overflow_reg == 'overflow'
 

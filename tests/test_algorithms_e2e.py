@@ -33,11 +33,17 @@ from pyqres.algorithms.qda_solver import (
 from pyqres.algorithms.qda_solver import BlockEncoding, StatePreparation
 from pysparq.algorithms.qda_solver import BlockEncodingHs, BlockEncodingHsPD, WalkS, LCU, Filtering
 
-# Import PySparQ solver functions (they use pysparq.algorithms internally)
-from pysparq.algorithms.cks_solver import (
-    cks_solve_v2,
-    ChebyshevPolynomialCoefficient as PS_Chebyshev,
-)
+# Import PySparQ solver functions (they use pysparq.algorithms internally).
+# Some packaged PySparQ builds do not expose cks_solve_v2; the only tests that
+# use it are skipped below, so keep collection robust across those builds.
+try:
+    from pysparq.algorithms.cks_solver import (
+        cks_solve_v2,
+        ChebyshevPolynomialCoefficient as PS_Chebyshev,
+    )
+except ImportError:
+    cks_solve_v2 = None
+    PS_Chebyshev = None
 from pysparq.algorithms.qda_solver import (
     compute_fs as ps_compute_fs,
     compute_rotation_matrix as ps_compute_rotation_matrix,

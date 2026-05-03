@@ -42,6 +42,13 @@ from .primitives import (
     QRAM,
 )
 from .algorithms import AmplitudeAmplification, Tomography, LinearSolver
+from .visualization import (
+    operation_to_tree_data,
+    render_call_tree_html,
+    render_circuit_html,
+    write_call_tree_html,
+    write_circuit_html,
+)
 
 # Backward compatibility aliases
 BaseProgram = Composite

@@ -1,0 +1,9 @@
+name: intermediate
+description: Intermediate primitives for QEC-compiler integration. These map directly to AbstractGate names and are decomposed inside QEC-compiler's pipeline.
+primitives:
+  - MCX
+  - ADD
+  - MOD_ADD
+  - MOD_MUL
+  - PLUS_ONE
+  - REFLECT
