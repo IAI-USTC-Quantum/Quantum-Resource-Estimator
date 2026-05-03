@@ -184,6 +184,17 @@ For a QDA-Tridiagonal example:
 python examples/qda_tridiagonal_visualization.py
 ```
 
+For LaTeX output, `pyqres.quantikz.QuantikzVisitor` compiles an `Operation`
+tree into register-level Quantikz:
+
+```python
+from pyqres.quantikz import QuantikzVisitor
+
+visitor = QuantikzVisitor()
+op.traverse(visitor)
+latex = visitor.to_latex()
+```
+
 See `docs/source/visualization/index.rst` for details.
 
 ## Tests And Docs

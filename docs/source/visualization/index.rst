@@ -117,14 +117,24 @@ Quantum-Resource-Estimator 支持使用 Quantikz LaTeX 包生成量子线路图�
 
 .. code-block:: python
 
-   from pyqres.quantikz import QuantumCircuit
+   from pyqres.core.metadata import RegisterMetadata
+   from pyqres.primitives import X
+   from pyqres.quantikz import QuantikzVisitor
 
-   # 创建线路图
-   circuit = QuantumCircuit()
-   # ... 添加操作
+   rm = RegisterMetadata.get_register_metadata()
+   rm.declare_register("ctrl", 1)
+   rm.declare_register("q", 1)
 
-   # 生成 LaTeX
-   latex = circuit.to_latex()
+   op = X(["q"], [0]).control_by_all_ones("ctrl")
+
+   visitor = QuantikzVisitor()
+   op.traverse(visitor)
+   latex = visitor.to_latex()
+
+Quantikz 输出是 register-level 线路图。它会展开 pyqres ``Operation`` 树，
+继承 controller context，并按照 dagger traversal 逆序渲染子操作。若需要直接
+构造 timeline，也可以使用 ``QuantumCircuit``、``OpCode`` 和
+``LatexGenerator``。
 
 依赖
 ~~~~

@@ -1,4 +1,5 @@
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Union
+
 from sympy import Symbol
 
 
@@ -45,7 +46,7 @@ class RegisterMetadata:
         old_size = self.registers[reg]
         for name, size in new_reg_declarations:
             if name not in self.registers:
-                raise ValueError(f"Register {name} not declared")
+                self.declare_register(name, size)
             if isinstance(size, int) and isinstance(old_size, int) and size > old_size:
                 raise ValueError(f"Register {reg} size too small to split")
             self.registers[name] = size
@@ -153,10 +154,6 @@ class FunctionDeclaration:
         self.program_list = program_list or []
 
     def __str__(self):
-        from .registry import OperationRegistry
-        from .utils import reg_sz, merge_controllers
-        import inspect
-
         mock_register_metadata = RegisterMetadata.push_register_metadata()
         regs = [f"q_{i}" for i in range(self.reg_count)]
         size_param = 0
