@@ -143,6 +143,27 @@ TDepthEstimator
    :members:
    :special-members: __init__
 
+QECEstimator
+~~~~~~~~~~~~
+
+.. autoclass:: QECEstimator
+   :members:
+   :special-members: __init__
+
+.. autofunction:: to_abstract_circuit
+
+QEC lowering internals
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: pyqres.core.qec_lowering
+
+.. autoclass:: QECLoweringVisitor
+   :members:
+   :special-members: __init__
+
+.. autoclass:: UnsupportedQECPrimitive
+   :members:
+
 模拟器
 ------
 

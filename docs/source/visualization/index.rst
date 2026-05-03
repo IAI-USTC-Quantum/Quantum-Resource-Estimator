@@ -19,6 +19,40 @@ the root module collapsed, depth ``1`` expands one module level, and each
 larger value expands one more level.  Changing these controls redraws the
 circuit in the browser.
 
+Generated views
+~~~~~~~~~~~~~~~
+
+Call tree HTML is intended for checking operation structure before lowering:
+
+* composite and primitive node names
+* register and temporary-register usage
+* parameter values
+* controller and dagger contexts after propagation
+* generated submodules
+
+Circuit HTML is a register-level view.  It is deliberately higher level than a
+gate-by-gate QEC circuit: a composite can stay collapsed as one module block or
+be expanded in the browser.  This is useful for QDA and block-encoding
+inspection, where expanding every primitive immediately makes the drawing too
+large.
+
+Expansion semantics
+~~~~~~~~~~~~~~~~~~~
+
+The circuit sidebar has two expansion controls:
+
+* ``Expansion depth`` expands composite modules by tree depth.  ``0`` means the
+  root remains a single module, ``1`` expands the root one level, and larger
+  values expand deeper nested composites.
+* ``Module overrides`` lists composite module instances.  Checking one forces
+  that module to expand even if the global depth would keep it collapsed.
+
+Register sizes are inferred from ``RegisterMetadata``, temporary-register
+declarations, and structural register operations such as ``SplitRegister`` and
+``AddRegister``.  Dynamically created registers such as ``_overflow`` and
+``_other`` should therefore show their qubit counts when enough structural
+information is present in the operation tree.
+
 .. code-block:: python
 
    from pyqres.core.metadata import RegisterMetadata
@@ -49,6 +83,19 @@ It writes:
 
 - ``visualizations/qda_tridiagonal_tree.html``
 - ``visualizations/qda_tridiagonal_circuit.html``
+
+Public API
+~~~~~~~~~~
+
+* ``operation_to_tree_data(operation)`` returns the JSON-serializable tree model
+  used by both HTML renderers.  This is useful for tests or custom downstream
+  visualization tools.
+* ``render_call_tree_html(operation, title=None)`` and
+  ``render_circuit_html(operation, title=None)`` return HTML text without
+  writing a file.
+* ``write_call_tree_html(operation, path, title=None)`` and
+  ``write_circuit_html(operation, path, title=None)`` write the standalone HTML
+  file and return the output ``Path``.
 
 API
 ---

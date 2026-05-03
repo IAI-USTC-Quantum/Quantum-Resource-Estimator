@@ -9,6 +9,7 @@ Quantum-Resource-Estimator 是一个基于 Python 的量子计算资源估计工
 - 在寄存器层级编写量子程序
 - 估计量子程序的 `T-count` / `T-depth` / `Toffoli-count` / `Toffoli-depth`（可参数化）
 - 利用 PySparQ C++ 模拟器对程序进行量子态模拟
+- 生成交互式 HTML 调用树和寄存器级 circuit visualization
 - 生成 Quantikz LaTeX 量子线路图
 - DSL 系统支持 YAML 定义组合操作
 
@@ -70,6 +71,40 @@ pyqres compile --primitive toffoli          # 使用 Toffoli 原语集
 pyqres compile --lib pyqres/lib/arithmetic/ # 加载库文件
 pyqres check                                # 完整性检查（依赖、覆盖率）
 ```
+
+## Visualization
+
+pyqres 提供两类交互式 HTML visualization，输出文件是自包含 HTML，
+可以直接用浏览器打开，不需要启动本地服务。
+
+- **Call tree**：展示 `Operation` / `Composite` / `Primitive` 调用树。每个节点可以展开，详情里包含寄存器、参数、controller、dagger 状态和 submodule 信息。
+- **Register-level circuit**：把操作树渲染为寄存器级时间线。侧边栏可以切换 call-tree/circuit 视图，调节 expansion depth，并选择某个 composite module 强制展开后重绘线路。
+
+```python
+from pyqres.core.metadata import RegisterMetadata
+from pyqres.algorithms.block_encoding import BlockEncodingTridiagonal
+from pyqres.visualization import write_call_tree_html, write_circuit_html
+
+rm = RegisterMetadata.get_register_metadata()
+rm.declare_register("main", 2, "UnsignedInteger")
+rm.declare_register("anc_UA", 4, "UnsignedInteger")
+
+op = BlockEncodingTridiagonal("main", "anc_UA", alpha=0.5, beta=0.3)
+
+write_call_tree_html(op, "block_encoding_tree.html")
+write_circuit_html(op, "block_encoding_circuit.html")
+```
+
+QDA-Tridiagonal 示例：
+
+```bash
+python examples/qda_tridiagonal_visualization.py
+```
+
+默认输出：
+
+- `visualizations/qda_tridiagonal_tree.html`
+- `visualizations/qda_tridiagonal_circuit.html`
 
 ## DSL 用法
 
@@ -588,6 +623,12 @@ no-op。
 | `MOD_ADD` | `MOD_ADD(N)` | clean modular add: `|a>|b>|0> -> |a>|a+b mod N>|0>`。 |
 | `MOD_MUL` | `MOD_MUL(c,N)` | clean modular multiply: `|x>|0>|0> -> |c*x mod N>|0>|0>`。 |
 
+controller 与 dagger context 在 lowering 时会变成显式 QEC gate：
+`ADD_DAG` / `CADD` / `CADD_DAG`、`PLUS_ONE_DAG` / `CPLUS_ONE` /
+`CPLUS_ONE_DAG`、`MOD_SUB` / `CMOD_ADD` / `CMOD_SUB`、`CMOD_MUL`。
+`MOD_MUL.dagger()` 会把 multiplier 改写为 `c^-1 mod N`。
+Shor `ExpMod` 仍使用兼容 gate `CMUL_MOD_N`。
+
 这些 primitive 的 schema 位于：
 
 ```text
@@ -624,9 +665,10 @@ pytest skip；开发联调时请先安装或把 QEC-Compiler checkout 加入 `PY
 pytest -q
 ```
 
-QEC-Compiler 侧还会对 `ADD`、`MOD_ADD`、`MOD_MUL`、`CMUL_MOD_N` 做小规模
-truth-table 检查。修改中间层 primitive 或 QEC lowering contract 时，需要同时
-运行 QEC-Compiler 的 arithmetic 测试。
+QEC-Compiler 侧还会对 `ADD`、`ADD_DAG`、`PLUS_ONE`、`MOD_ADD`、`MOD_SUB`、
+`MOD_MUL`、`CMOD_MUL`、`CMUL_MOD_N` 等做小规模 truth-table 检查。
+修改中间层 primitive 或 QEC lowering contract 时，需要同时运行 QEC-Compiler
+的 arithmetic 测试。
 
 ## 算法实现
 

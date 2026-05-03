@@ -38,12 +38,32 @@ Primitive 语义
     ``|x>|0>|0> -> |c*x mod N>|0>|0>``。
     dagger 使用 ``c^-1 mod N`` 作为 multiplier。
 
+QEC gate 变体
+-------------
+
+pyqres 公开的中间层 Python primitive 固定为 ``MCX``、``PLUS_ONE``、
+``ADD``、``REFLECT``、``MOD_ADD``、``MOD_MUL``。在 lowering 到
+QEC-compiler ``AbstractCircuit`` 时，controller 与 dagger context 会被显式
+编码为 QEC gate 名称，而不是被静默消去：
+
+* ``PLUS_ONE_DAG`` / ``CPLUS_ONE`` / ``CPLUS_ONE_DAG``
+* ``ADD_DAG`` / ``CADD`` / ``CADD_DAG``
+* ``MOD_SUB`` / ``CMOD_ADD`` / ``CMOD_SUB``
+* ``CMOD_MUL``；``MOD_MUL`` 的 dagger 通过 ``c^-1 mod N`` 改写 multiplier
+
+controlled gate 的 qubit 顺序统一为 ``controls...`` 后接原 primitive qubit。
+``C*`` gate 的最后一个参数是 ``n_controls``，用于 QEC-compiler 从 qubit 列表
+中拆分外部控制位。value-control 为 0 时，pyqres lowering 会在控制位前后插入
+``X`` sandwich，使 QEC-compiler 仍只需要识别 all-ones control。
+
 ``CMUL_MOD_N(control, x; c, N)``
-    controlled modular multiplication。control 为 1 时执行 ``MOD_MUL``，否则 no-op。
-    QEC lowering 可以为 work/flag 分配 clean auxiliary qubit。
+    Shor ``ExpMod`` 的兼容 gate。control 为 1 时执行 ``MOD_MUL``，否则 no-op。
+    这是 pyqres Shor lowering 的历史路径；新中间层 primitive 的 controlled
+    modular multiplication 使用 ``CMOD_MUL``。QEC lowering 可以为 work/flag
+    分配 clean auxiliary qubit。
 
 PySparQ reference 要求
----------------------
+--------------------------
 
 pyqres 中间层 primitive 的 ``pyqsparse_object()`` 必须与上述 contract 一致。
 如果 PySparQ 暂无等价 primitive，则该 reference 必须抛出 ``NotImplementedError``，
