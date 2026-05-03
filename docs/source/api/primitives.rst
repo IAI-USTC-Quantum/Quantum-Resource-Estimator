@@ -165,6 +165,40 @@ pyqres.primitives
    :show-inheritance:
    :special-members: __init__
 
+QEC 中间层 Primitive
+~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: pyqres.primitives.intermediate
+
+这些 primitive 是 pyqres 与 QEC-compiler 第一版联调使用的冻结中间层。
+它们可以通过 ``pyqres.core.lowering.to_abstract_circuit`` lowering 为
+QEC-compiler ``AbstractGate``，并由 QEC-compiler 继续分解到
+``MCX``/Clifford/rotation/CCZ 路径。
+
+.. autoclass:: MCX
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: ADD
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: PLUS_ONE
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: REFLECT
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: MOD_ADD
+   :show-inheritance:
+   :special-members: __init__
+
+.. autoclass:: MOD_MUL
+   :show-inheritance:
+   :special-members: __init__
+
 寄存器操作
 ----------
 

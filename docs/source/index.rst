@@ -1,7 +1,7 @@
 .. Quantum-Resource-Estimator documentation master file
 
 Quantum-Resource-Estimator (pyqres) 文档
-======================
+========================================
 
 Quantum-Resource-Estimator 是一个基于 Python 的量子计算资源估计工具，采用 **寄存器级编程范式**，
 估算 T-count、T-depth、Toffoli-count、Toffoli-depth，
