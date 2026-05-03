@@ -204,6 +204,10 @@ def _state_prep_to_rotations(state_vector: list[complex], n_qubits: int) -> list
     return rotations
 
 
+def _is_real_state_vector(state_vector: list[complex]) -> bool:
+    return all(abs(complex(value).imag) < 1e-12 for value in state_vector)
+
+
 class QECLoweringVisitor:
     """Visitor that lowers an Operation tree to QEC AbstractCircuit gates."""
 
@@ -229,8 +233,10 @@ class QECLoweringVisitor:
     def visit(self, node, dagger_ctx=False, controllers_ctx=None):
         controllers_ctx = controllers_ctx or {}
         # Merge node's own controllers for Primitives.
-        # Composites merge in traverse_children; Primitives don't.
-        if hasattr(node, 'controllers') and not hasattr(node, 'program_list'):
+        # Composites merge in traverse_children; Primitives don't.  Every
+        # Operation has program_list, so use isinstance rather than hasattr.
+        from .operation import Primitive
+        if isinstance(node, Primitive) and hasattr(node, 'controllers'):
             from .utils import merge_controllers
             controllers_ctx = merge_controllers(controllers_ctx, node.controllers)
         class_name = type(node).__name__
@@ -286,7 +292,6 @@ class QECLoweringVisitor:
         # Composite operations are safe to ignore here because traverse_children()
         # handles dispatch to their children.  Primitive inherits program_list too,
         # so distinguish it explicitly.
-        from .operation import Primitive
         if not isinstance(node, Primitive) and (
             hasattr(node, 'program_list') or hasattr(node, 'traverse_children')
         ):
@@ -301,9 +306,16 @@ class QECLoweringVisitor:
     def _emit_gate(self, name: str, qubits: tuple[int, ...], params: tuple[float, ...] = ()):
         self.gates.append(_make_abstract_gate(name, qubits, params))
 
-    def _apply_controllers(self, base_qubits: tuple[int, ...], controllers_ctx: dict) -> tuple[int, ...]:
-        """Extract control qubits from controller context."""
+    def _controller_qubits(
+        self, controllers_ctx: dict
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """Return all control qubits and value-control zero qubits.
+
+        ``conditioned_by_value`` is implemented by X-sandwiching zero-valued
+        control bits, then treating all bits as all-ones controls.
+        """
         ctrl_qubits = []
+        zero_qubits = []
         for ctrl_type, ctrl_data in controllers_ctx.items():
             if ctrl_type == "conditioned_by_all_ones":
                 for reg in ctrl_data:
@@ -314,9 +326,10 @@ class QECLoweringVisitor:
                     if self.alloc.has(reg):
                         ctrl_qubits.append(self.alloc.qubit_index(reg, bit))
             elif ctrl_type == "conditioned_by_nonzero":
-                for reg in ctrl_data:
-                    if self.alloc.has(reg):
-                        ctrl_qubits.extend(self.alloc.qubit_range(reg))
+                raise UnsupportedQECPrimitive(
+                    "QEC lowering for conditioned_by_nonzero requires an OR "
+                    "predicate and is not implemented yet."
+                )
             elif ctrl_type == "conditioned_by_value":
                 value_items = []
                 for item in ctrl_data:
@@ -326,8 +339,175 @@ class QECLoweringVisitor:
                         value_items.append(item)
                 for reg, _value in value_items:
                     if self.alloc.has(reg):
-                        ctrl_qubits.extend(self.alloc.qubit_range(reg))
-        return tuple(ctrl_qubits)
+                        for bit, qubit in enumerate(self.alloc.qubit_range(reg)):
+                            ctrl_qubits.append(qubit)
+                            if not ((int(_value) >> bit) & 1):
+                                zero_qubits.append(qubit)
+        # Keep order stable but avoid duplicate controls when contexts merge.
+        return tuple(dict.fromkeys(ctrl_qubits)), tuple(dict.fromkeys(zero_qubits))
+
+    def _apply_controllers(self, base_qubits: tuple[int, ...], controllers_ctx: dict) -> tuple[int, ...]:
+        """Extract control qubits from controller context."""
+        ctrl_qubits, _zero_qubits = self._controller_qubits(controllers_ctx)
+        return ctrl_qubits
+
+    def _emit_with_value_control_sandwich(self, zero_qubits: tuple[int, ...], emit):
+        for qubit in zero_qubits:
+            self._emit_gate("X", (qubit,))
+        emit()
+        for qubit in reversed(zero_qubits):
+            self._emit_gate("X", (qubit,))
+
+    def _controlled_ry_gates(
+        self,
+        target: int,
+        angle: float,
+        controls: tuple[tuple[int, int], ...] = (),
+    ) -> list:
+        """Return exact Ry gates controlled by a value-pattern predicate."""
+        if abs(angle) < 1e-12:
+            return []
+        if not controls:
+            return [_make_abstract_gate("RY", (target,), (angle,))]
+
+        gates = []
+        zero_controls = [control for control, value in controls if value == 0]
+        control_qubits = tuple(control for control, _value in controls)
+
+        for control in zero_controls:
+            gates.append(_make_abstract_gate("X", (control,)))
+
+        if len(control_qubits) == 1:
+            predicate = control_qubits[0]
+            uncompute = []
+        else:
+            predicate = self.alloc.allocate_anonymous(1)[0]
+            compute = _make_abstract_gate("MCX", control_qubits + (predicate,))
+            gates.append(compute)
+            uncompute = [compute]
+
+        gates.extend([
+            _make_abstract_gate("RY", (target,), (angle / 2,)),
+            _make_abstract_gate("CNOT", (predicate, target)),
+            _make_abstract_gate("RY", (target,), (-angle / 2,)),
+            _make_abstract_gate("CNOT", (predicate, target)),
+        ])
+        gates.extend(uncompute)
+
+        for control in reversed(zero_controls):
+            gates.append(_make_abstract_gate("X", (control,)))
+        return gates
+
+    def _controlled_x_gates(
+        self,
+        target: int,
+        controls: tuple[tuple[int, int], ...] = (),
+    ) -> list:
+        """Return X controlled by a value-pattern predicate."""
+        if not controls:
+            return [_make_abstract_gate("X", (target,))]
+
+        gates = []
+        zero_controls = [control for control, value in controls if value == 0]
+        control_qubits = tuple(control for control, _value in controls)
+
+        for control in zero_controls:
+            gates.append(_make_abstract_gate("X", (control,)))
+        if len(control_qubits) == 1:
+            gates.append(_make_abstract_gate("CNOT", (control_qubits[0], target)))
+        else:
+            gates.append(_make_abstract_gate("MCX", control_qubits + (target,)))
+        for control in reversed(zero_controls):
+            gates.append(_make_abstract_gate("X", (control,)))
+        return gates
+
+    def _pysparq_two_qubit_state_prep_gates(
+        self,
+        qubits: tuple[int, int],
+        values: list[float],
+        base_controls: tuple[tuple[int, int], ...],
+    ) -> list:
+        """Match PySparQ's 2-qubit Rot_GeneralStatePrep unitary."""
+        q0, q1 = qubits
+        gates = []
+        residual = 1.0
+        angles = []
+        for value in values[1:]:
+            if residual < 1e-15:
+                angles.append(0.0)
+                continue
+            sine = max(-1.0, min(1.0, value / residual))
+            angles.append(2 * math.asin(sine))
+            residual *= math.sqrt(max(0.0, 1.0 - sine * sine))
+
+        gates.extend(self._controlled_ry_gates(
+            q0, angles[0], base_controls + ((q1, 0),)
+        ))
+        gates.extend(self._controlled_ry_gates(
+            q1, angles[1], base_controls + ((q0, 0),)
+        ))
+        gates.extend(self._controlled_x_gates(q0, base_controls + ((q1, 1),)))
+        gates.extend(self._controlled_ry_gates(
+            q1, angles[2], base_controls + ((q0, 0),)
+        ))
+        gates.extend(self._controlled_x_gates(q0, base_controls + ((q1, 1),)))
+        return gates
+
+    def _real_state_prep_gates(
+        self,
+        qubits: tuple[int, ...],
+        state_vector: list[complex],
+        base_controls: tuple[tuple[int, int], ...] = (),
+    ) -> list:
+        """Synthesize real-amplitude state prep in little-endian order.
+
+        The vector index is interpreted as the integer encoded by ``qubits``,
+        with ``qubits[0]`` the least significant bit.  This covers the
+        tridiagonal block-encoding state-prep path and avoids the older
+        low-bit-first approximation.
+        """
+        values = [float(complex(value).real) for value in state_vector]
+        if len(values) != 1 << len(qubits):
+            raise UnsupportedQECPrimitive(
+                f"State vector of length {len(values)} does not match "
+                f"{len(qubits)} QEC qubits."
+            )
+        norm = math.sqrt(sum(value * value for value in values))
+        if norm < 1e-15:
+            return []
+        values = [value / norm for value in values]
+        if len(qubits) == 2:
+            return self._pysparq_two_qubit_state_prep_gates(
+                (qubits[0], qubits[1]), values, tuple(base_controls)
+            )
+        gates = []
+
+        def recurse(active_qubits: tuple[int, ...], vec: list[float],
+                    controls: tuple[tuple[int, int], ...] = ()) -> None:
+            if not active_qubits:
+                return
+            if len(active_qubits) == 1:
+                angle = 2 * math.atan2(vec[1], vec[0])
+                gates.extend(self._controlled_ry_gates(active_qubits[0], angle, controls))
+                return
+
+            target = active_qubits[-1]
+            half = len(vec) // 2
+            low = vec[:half]
+            high = vec[half:]
+            low_norm = math.sqrt(sum(value * value for value in low))
+            high_norm = math.sqrt(sum(value * value for value in high))
+            angle = 2 * math.atan2(high_norm, low_norm)
+            gates.extend(self._controlled_ry_gates(target, angle, controls))
+
+            rest = active_qubits[:-1]
+            if low_norm > 1e-15:
+                recurse(rest, [value / low_norm for value in low], controls + ((target, 0),))
+            if high_norm > 1e-15:
+                recurse(rest, [value / high_norm for value in high], controls + ((target, 1),))
+
+        recurse(tuple(qubits), values, tuple(base_controls))
+        return gates
 
     def _value_control_zero_qubits(self, controllers_ctx: dict) -> tuple[int, ...]:
         """Qubits that must be X-sandwiched for conditioned_by_value controls."""
@@ -370,8 +550,10 @@ class QECLoweringVisitor:
         if not main or not subs or not self.alloc.has(main):
             return
 
-        # Split: create sub-register ranges from main's range.
-        # Keep main's full range intact (it's still referenced by later operations).
+        # PySparQ SplitRegister(first, second, size) cuts the low ``size``
+        # bits from ``first`` into ``second`` and right-shifts ``first``.
+        # Multiple sub-registers in a single pyqres SplitRegister are applied
+        # in order, so each subsequent sub-register receives the next low bits.
         main_start, main_size = self.alloc._ranges[main]
         offset = 0
         for sub, size in zip(subs, sizes):
@@ -379,6 +561,11 @@ class QECLoweringVisitor:
                 break
             self.alloc._ranges[sub] = (main_start + offset, size)
             offset += size
+        remaining = main_size - offset
+        if remaining > 0:
+            self.alloc._ranges[main] = (main_start + offset, remaining)
+        else:
+            self.alloc.free(main)
 
     def _handle_combine(self, node, dagger_ctx=False):
         main = node.reg_list[0] if node.reg_list else None
@@ -393,7 +580,16 @@ class QECLoweringVisitor:
             return
 
         if main and sub and self.alloc.has(sub):
-            self.regs.combine_register(main, sub)
+            sub_start, sub_size = self.alloc._ranges[sub]
+            if self.alloc.has(main):
+                main_start, main_size = self.alloc._ranges[main]
+                # CombineRegister(first, second) appends ``second`` back as
+                # the low bits, reversing the low-bit split above.
+                new_start = min(sub_start, main_start)
+                self.alloc._ranges[main] = (new_start, main_size + sub_size)
+            else:
+                self.alloc._ranges[main] = (sub_start, sub_size)
+            self.alloc.free(sub)
 
     # ---- Single-qubit gates ----
 
@@ -583,7 +779,14 @@ class QECLoweringVisitor:
         for reg in node.control_regs:
             ctrl_qubits.extend(self.alloc.qubit_range(reg))
         tgt_qubits = self.alloc.qubit_range(node.target_reg)
-        self._emit_gate("MCX", tuple(ctrl_qubits) + (tgt_qubits[0],))
+        extra_ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        extra_ctrl_qubits = tuple(q for q in extra_ctrl_qubits if q != tgt_qubits[0])
+        all_controls = tuple(extra_ctrl_qubits) + tuple(ctrl_qubits)
+
+        def emit():
+            self._emit_gate("MCX", all_controls + (tgt_qubits[0],))
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     def _lower_ADD(self, node, dagger_ctx, controllers_ctx):
         """N-bit ripple-carry adder: |a>|b> -> |a>|(a+b mod 2^n)>.
@@ -598,18 +801,43 @@ class QECLoweringVisitor:
         carry_q = self.alloc.allocate_anonymous(n)
         maj_q = self.alloc.allocate_anonymous(n)
         temp_q = self.alloc.allocate_anonymous(n)
-        self._emit_gate(
-            "ADD",
-            tuple(carry_q) + tuple(a_q) + tuple(b_q) + tuple(maj_q) + tuple(temp_q),
-            (n,),
-        )
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        add_qubits = tuple(carry_q) + tuple(a_q) + tuple(b_q) + tuple(maj_q) + tuple(temp_q)
+        ctrl_qubits = tuple(q for q in ctrl_qubits if q not in set(add_qubits))
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+        gate_name = "ADD_DAG" if effective_dagger else "ADD"
+        params = (n,)
+        qubits = add_qubits
+        if ctrl_qubits:
+            gate_name = "CADD_DAG" if effective_dagger else "CADD"
+            params = (n, len(ctrl_qubits))
+            qubits = tuple(ctrl_qubits) + add_qubits
+
+        def emit():
+            self._emit_gate(gate_name, qubits, params)
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     def _lower_PLUS_ONE(self, node, dagger_ctx, controllers_ctx):
         """Increment circuit: |r> → |r+1 mod 2^n>."""
         main_q = list(self.alloc.qubit_range(node.main_reg))
         overflow_q = list(self.alloc.qubit_range(node.overflow_reg)) if node.overflow_reg else []
-        all_q = main_q + overflow_q
-        self._emit_gate("PLUS_ONE", tuple(all_q), (node.n_bits,))
+        all_q = tuple(main_q + overflow_q)
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        ctrl_qubits = tuple(q for q in ctrl_qubits if q not in set(all_q))
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+        gate_name = "PLUS_ONE_DAG" if effective_dagger else "PLUS_ONE"
+        params = (node.n_bits,)
+        qubits = all_q
+        if ctrl_qubits:
+            gate_name = "CPLUS_ONE_DAG" if effective_dagger else "CPLUS_ONE"
+            params = (node.n_bits, len(ctrl_qubits))
+            qubits = tuple(ctrl_qubits) + all_q
+
+        def emit():
+            self._emit_gate(gate_name, qubits, params)
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     def _lower_REFLECT(self, node, dagger_ctx, controllers_ctx):
         """Multi-controlled Z (reflection)."""
@@ -617,7 +845,7 @@ class QECLoweringVisitor:
         for reg in node.target_regs:
             qubits.extend(self.alloc.qubit_range(reg))
         n_bits = len(qubits)
-        self._emit_gate("REFLECT", tuple(qubits), (n_bits,))
+        self._emit_controlled_gate("REFLECT", tuple(qubits), (n_bits,), controllers_ctx)
 
     def _lower_MOD_ADD(self, node, dagger_ctx, controllers_ctx):
         """Modular addition: |a>|b> → |a>|a+b mod N>.
@@ -628,8 +856,22 @@ class QECLoweringVisitor:
         a_q = list(self.alloc.qubit_range(node.a_reg))
         b_q = list(self.alloc.qubit_range(node.b_reg))
         flag_q = self.alloc.allocate_anonymous(1)
-        all_q = a_q + b_q + flag_q
-        self._emit_gate("MOD_ADD", tuple(all_q), (node.modulus,))
+        all_q = tuple(a_q + b_q + flag_q)
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        ctrl_qubits = tuple(q for q in ctrl_qubits if q not in set(all_q))
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+        gate_name = "MOD_SUB" if effective_dagger else "MOD_ADD"
+        params = (node.modulus,)
+        qubits = all_q
+        if ctrl_qubits:
+            gate_name = "CMOD_SUB" if effective_dagger else "CMOD_ADD"
+            params = (node.modulus, len(ctrl_qubits))
+            qubits = tuple(ctrl_qubits) + all_q
+
+        def emit():
+            self._emit_gate(gate_name, qubits, params)
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     def _lower_MOD_MUL(self, node, dagger_ctx, controllers_ctx):
         """Modular multiplication: |reg> → |reg * c mod N>.
@@ -640,8 +882,26 @@ class QECLoweringVisitor:
         reg_q = list(self.alloc.qubit_range(node.reg))
         work_q = self.alloc.allocate_anonymous(len(reg_q))
         flag_q = self.alloc.allocate_anonymous(1)
-        all_q = reg_q + work_q + flag_q
-        self._emit_gate("MOD_MUL", tuple(all_q), (float(node.multiplier), float(node.modulus)))
+        all_q = tuple(reg_q + work_q + flag_q)
+        multiplier = int(node.multiplier)
+        modulus = int(node.modulus)
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        ctrl_qubits = tuple(q for q in ctrl_qubits if q not in set(all_q))
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+        if effective_dagger:
+            multiplier = pow(multiplier, -1, modulus)
+        gate_name = "MOD_MUL"
+        params = (float(multiplier), float(modulus))
+        qubits = all_q
+        if ctrl_qubits:
+            gate_name = "CMOD_MUL"
+            params = (float(multiplier), float(modulus), float(len(ctrl_qubits)))
+            qubits = tuple(ctrl_qubits) + all_q
+
+        def emit():
+            self._emit_gate(gate_name, qubits, params)
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     # ---- Transform operations ----
 
@@ -700,9 +960,23 @@ class QECLoweringVisitor:
         overflow_reg = node.reg_list[1] if len(node.reg_list) > 1 else None
         if not main_reg or not overflow_reg:
             return
-        qubits = self.alloc.qubit_range(main_reg) + self.alloc.qubit_range(overflow_reg)
+        qubits = tuple(self.alloc.qubit_range(main_reg) + self.alloc.qubit_range(overflow_reg))
         n_bits = len(self.alloc.qubit_range(main_reg))
-        self._emit_controlled_gate("PLUS_ONE", tuple(qubits), (n_bits,), controllers_ctx)
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+        ctrl_qubits = tuple(q for q in ctrl_qubits if q not in set(qubits))
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+        gate_name = "PLUS_ONE_DAG" if effective_dagger else "PLUS_ONE"
+        params = (n_bits,)
+        all_qubits = qubits
+        if ctrl_qubits:
+            gate_name = "CPLUS_ONE_DAG" if effective_dagger else "CPLUS_ONE"
+            params = (n_bits, len(ctrl_qubits))
+            all_qubits = tuple(ctrl_qubits) + qubits
+
+        def emit():
+            self._emit_gate(gate_name, all_qubits, params)
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit)
 
     # ---- Arithmetic: ExpMod / ModMul (Shor) ----
 
@@ -749,11 +1023,31 @@ class QECLoweringVisitor:
 
         qubits = self.alloc.qubit_range(reg)
         n_qubits = len(qubits)
+        effective_dagger = node.dagger_flag ^ dagger_ctx
+
+        if _is_real_state_vector(state_vector):
+            ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
+            target_set = set(qubits)
+            zero_set = set(zero_qubits)
+            base_controls = tuple(
+                (q, 0 if q in zero_set else 1)
+                for q in ctrl_qubits
+                if q not in target_set
+            )
+            gates = self._real_state_prep_gates(qubits, state_vector, base_controls)
+            if effective_dagger:
+                gates = [
+                    _make_abstract_gate(g.name, g.qubits, tuple(-p for p in g.params))
+                    if g.name == "RY" else g
+                    for g in reversed(gates)
+                ]
+            self.gates.extend(gates)
+            return
 
         rotations = _state_prep_to_rotations(state_vector, n_qubits)
 
         # If dagger, reverse the rotation sequence and negate angles
-        if dagger_ctx:
+        if effective_dagger:
             rotations = list(reversed(rotations))
             for r in rotations:
                 r["angle"] = -r["angle"]
@@ -820,7 +1114,7 @@ class QECLoweringVisitor:
                                controllers_ctx: dict = None):
         """Emit a gate, wrapping with controls if needed."""
         controllers_ctx = controllers_ctx or {}
-        ctrl_qubits = self._apply_controllers((), controllers_ctx)
+        ctrl_qubits, zero_qubits = self._controller_qubits(controllers_ctx)
 
         # Filter out control qubits that overlap with target (from register-level
         # conditioning where target register is sub-register of control register)
@@ -828,9 +1122,26 @@ class QECLoweringVisitor:
         ctrl_qubits = [q for q in ctrl_qubits if q not in target_set]
 
         if not ctrl_qubits:
-            self._emit_gate(name, base_qubits, params)
+            def emit_uncontrolled():
+                self._emit_gate(name, base_qubits, params)
+
+            self._emit_with_value_control_sandwich(zero_qubits, emit_uncontrolled)
             return
 
+        def emit_controlled():
+            self._emit_controlled_gate_no_value_sandwich(
+                name, base_qubits, params, tuple(ctrl_qubits)
+            )
+
+        self._emit_with_value_control_sandwich(zero_qubits, emit_controlled)
+
+    def _emit_controlled_gate_no_value_sandwich(
+        self,
+        name: str,
+        base_qubits: tuple[int, ...],
+        params: tuple[float, ...],
+        ctrl_qubits: tuple[int, ...],
+    ):
         if name in ("H", "X", "Y", "Z"):
             # Single-qubit gate with controls → MCX variant
             all_qubits = tuple(ctrl_qubits) + base_qubits

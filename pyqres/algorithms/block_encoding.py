@@ -142,7 +142,8 @@ class BlockEncodingTridiagonal(StandardComposite):
 
         # Conditional increment
         self.program_list.append(
-            PlusOneOverflow(reg_list=[self.main_reg, "_overflow"], param_list=[1]))
+            PlusOneOverflow(reg_list=[self.main_reg, "_overflow"], param_list=[1])
+                .control_by_value({self.anc_UA: 1}))
 
         # Reflections if beta < 0
         if self.beta < 0:
@@ -155,7 +156,9 @@ class BlockEncodingTridiagonal(StandardComposite):
 
         # Uncompute increment (dagger uses anc_UA=2, the complement of forward's anc_UA=1)
         self.program_list.append(
-            PlusOneOverflow(reg_list=[self.main_reg, "_overflow"], param_list=[1]).dagger())
+            PlusOneOverflow(reg_list=[self.main_reg, "_overflow"], param_list=[1])
+                .control_by_value({self.anc_UA: 2})
+                .dagger())
 
         # X gate on "other" qubit
         self.program_list.append(
@@ -565,18 +568,8 @@ class PlusOneOverflow(Primitive):
         self.cond_value = param_list[0] if param_list else None
 
     def dagger(self):
-        """Return a PlusOneOverflow with the complementary condition value.
-
-        Forward: conditions on anc_UA=1
-        Dagger:  conditions on anc_UA=2 (the complement, since anc_UA is 2-digit)
-        """
-        other_cond = 1 if self.cond_value == 2 else 2
-        op = PlusOneOverflow(
-            reg_list=[self.main_reg, self.overflow_reg],
-            param_list=[other_cond],
-        )
-        op.controllers = dict(self.controllers)
-        return op
+        self.dagger_flag = not self.dagger_flag
+        return self
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
         controllers_ctx = merge_controllers(self.controllers, controllers_ctx or {})

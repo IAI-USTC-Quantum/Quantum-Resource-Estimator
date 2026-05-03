@@ -100,6 +100,7 @@ class PLUS_ONE(Primitive):
         else:
             obj = PyQSparseOperationWrapper(
                 ps.PlusOneAndOverflow(self.main_reg, "_overflow"))
+        obj.set_dagger(dagger_ctx ^ self.dagger_flag)
         obj.set_controller(controllers_ctx)
         return obj
 
@@ -158,13 +159,10 @@ class MOD_ADD(Primitive):
         self.modulus = param_list[0] if param_list else 2
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
-        import pysparq as ps
-        controllers_ctx = merge_controllers(self.controllers, controllers_ctx or {})
-        obj = PyQSparseOperationWrapper(
-            ps.Add_UInt_UInt_InPlace(self.a_reg, self.b_reg))
-        obj.set_dagger(dagger_ctx)
-        obj.set_controller(controllers_ctx)
-        return obj
+        raise NotImplementedError(
+            "MOD_ADD has no matching PySparQ reference primitive yet. "
+            "Using Add_UInt_UInt_InPlace would violate the modular-add contract."
+        )
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
         n = reg_sz(self.a_reg) if self.a_reg else 1
@@ -186,9 +184,24 @@ class MOD_MUL(Primitive):
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
         import pysparq as ps
+        import math
         controllers_ctx = merge_controllers(self.controllers, controllers_ctx or {})
+        multiplier = int(self.multiplier)
+        modulus = int(self.modulus)
+        if math.gcd(multiplier, modulus) != 1:
+            raise ValueError(
+                f"MOD_MUL requires multiplier coprime to modulus, got "
+                f"multiplier={multiplier}, modulus={modulus}"
+            )
+        if dagger_ctx ^ self.dagger_flag:
+            multiplier = pow(multiplier, -1, modulus)
+        op_cls = getattr(ps, "Mod_Mult_UInt_ConstUInt_InPlace", None)
+        if op_cls is None:
+            op_cls = getattr(ps, "Mod_Mult_UInt_ConstUInt")
+        # PySparQ's primitive computes reg *= a^(2^x) mod N.  Use x=0 so
+        # the multiplier is exactly the intermediate-layer constant c.
         obj = PyQSparseOperationWrapper(
-            ps.Mod_Mult_UInt_ConstUInt(self.reg, self.multiplier, 0, self.modulus))
+            op_cls(self.reg, multiplier, 0, modulus))
         obj.set_controller(controllers_ctx)
         return obj
 

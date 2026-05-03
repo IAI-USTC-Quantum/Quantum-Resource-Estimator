@@ -100,6 +100,17 @@ class TestBasicGateLowering:
         x_gates = [g for g in circuit.gates if g.name == "X"]
         assert len(x_gates) == 1
 
+    def test_primitive_own_controller_is_applied(self):
+        from pyqres.primitives.gates import X
+
+        _declare_reg("ctrl", 1)
+        _declare_reg("target", 1)
+        op = X(reg_list=["target"], param_list=[0]).control_by_all_ones("ctrl")
+        circuit = _to_circuit(op)
+
+        assert [g.name for g in circuit.gates] == ["MCX"]
+        assert circuit.gates[0].qubits == (0, 1)
+
     def test_reflection_lowering(self):
         from pyqres.primitives.transform import Reflection_Bool
         _declare_reg("q", 3)
@@ -207,6 +218,53 @@ class TestEndToEndCompilation:
         assert [g.name for g in mod_mul_circuit.gates] == ["MOD_MUL"]
         assert lower_to_logical(mod_mul_circuit).ccz_inject_count > 0
 
+    def test_intermediate_dagger_gate_names(self):
+        """Intermediate arithmetic dagger lowers to inverse QEC gate names."""
+        from pyqres.primitives import ADD, MOD_ADD, MOD_MUL, PLUS_ONE
+
+        _declare_reg("a", 2, "UnsignedInteger")
+        _declare_reg("b", 2, "UnsignedInteger")
+        _declare_reg("x", 4, "UnsignedInteger")
+
+        add_circuit = _to_circuit(ADD(reg_list=["a", "b"], param_list=[2]).dagger())
+        assert [g.name for g in add_circuit.gates] == ["ADD_DAG"]
+
+        inc_circuit = _to_circuit(PLUS_ONE(reg_list=["a"], param_list=[2]).dagger())
+        assert [g.name for g in inc_circuit.gates] == ["PLUS_ONE_DAG"]
+
+        mod_add_circuit = _to_circuit(MOD_ADD(reg_list=["a", "b"], param_list=[3]).dagger())
+        assert [g.name for g in mod_add_circuit.gates] == ["MOD_SUB"]
+
+        mod_mul_circuit = _to_circuit(MOD_MUL(reg_list=["x"], param_list=[2, 15]).dagger())
+        assert [g.name for g in mod_mul_circuit.gates] == ["MOD_MUL"]
+        assert mod_mul_circuit.gates[0].params == (8.0, 15.0)
+
+    def test_controlled_mod_mul_lowers_to_controlled_intermediate(self):
+        """Controlled MOD_MUL remains explicit for QEC arithmetic lowering."""
+        from pyqres.primitives import MOD_MUL
+        from qec_compiler.decomposition import lower_to_logical
+
+        _declare_reg("ctrl", 1, "Boolean")
+        _declare_reg("x", 4, "UnsignedInteger")
+        op = MOD_MUL(reg_list=["x"], param_list=[2, 15]).control_by_all_ones("ctrl")
+        circuit = _to_circuit(op)
+
+        assert [g.name for g in circuit.gates] == ["CMOD_MUL"]
+        assert circuit.gates[0].params == (2.0, 15.0, 1.0)
+        assert lower_to_logical(circuit).ccz_inject_count > 0
+
+    def test_control_by_value_zero_bit_uses_x_sandwich(self):
+        """Value controls on zero bits are preserved with X sandwiches."""
+        from pyqres.primitives import MOD_MUL
+
+        _declare_reg("ctrl", 1, "Boolean")
+        _declare_reg("x", 4, "UnsignedInteger")
+        op = MOD_MUL(reg_list=["x"], param_list=[2, 15]).control_by_value({"ctrl": 0})
+        circuit = _to_circuit(op)
+
+        assert [g.name for g in circuit.gates] == ["X", "CMOD_MUL", "X"]
+        assert circuit.gates[0].qubits == circuit.gates[2].qubits == (0,)
+
     def test_mcx_4_controls_compiles(self):
         """MCX with 4 controls compiles with ancilla."""
         from qec_compiler.decomposition import lower_to_logical
@@ -229,7 +287,7 @@ class TestBlockEncodingLowering:
         """BlockEncodingTridiagonal lowers to recognized gate types."""
         from pyqres.algorithms.block_encoding import BlockEncodingTridiagonal
         _declare_reg("main", 2, "UnsignedInteger")
-        _declare_reg("anc_UA", 2)
+        _declare_reg("anc_UA", 4)
 
         op = BlockEncodingTridiagonal(
             main_reg="main", anc_UA="anc_UA", alpha=0.5, beta=0.3)
@@ -243,7 +301,8 @@ class TestBlockEncodingLowering:
         recognized = {
             "H", "X", "Y", "Z", "S", "S_DAG", "T", "T_DAG",
             "CNOT", "CCX", "MCX", "SWAP", "RZ", "RY", "RX",
-            "PHASE", "CPHASE", "REFLECT", "PLUS_ONE",
+            "PHASE", "CPHASE", "REFLECT", "PLUS_ONE", "CPLUS_ONE",
+            "PLUS_ONE_DAG", "CPLUS_ONE_DAG",
         }
         unknown = gate_names - recognized
         assert not unknown, f"Unknown gate names: {unknown}"
@@ -306,7 +365,7 @@ class TestWalkSLowering:
         from pyqres.algorithms.block_encoding import BlockEncodingTridiagonal
         from qec_compiler.decomposition import lower_to_logical
         _declare_reg("main", 2, "UnsignedInteger")
-        _declare_reg("anc_UA", 2)
+        _declare_reg("anc_UA", 4)
         _declare_reg("anc_1", 1)
         _declare_reg("anc_2", 1)
         _declare_reg("anc_3", 1)

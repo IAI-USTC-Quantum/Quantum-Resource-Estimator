@@ -10,4 +10,5 @@ API 参考
    primitives
    algorithms
    dsl
+   qec_intermediate_contract
    quantikz

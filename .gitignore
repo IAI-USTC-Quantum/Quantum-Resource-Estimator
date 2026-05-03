@@ -4,6 +4,7 @@ __pycache__/
 *.tex
 /pdf_outputs
 /convective_flux_jacobian
+/visualizations/
 
 # Sphinx documentation build
 docs/build/
