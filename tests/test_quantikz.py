@@ -2,14 +2,11 @@
 
 import pytest
 
-from pyqres.core.operation import Primitive, Composite, StandardComposite
 from pyqres.core.metadata import RegisterMetadata
-from pyqres.quantikz import QuantikzVisitor, LatexGenerator
-from pyqres.primitives import (
-    Hadamard, X, CNOT, Toffoli,
-    Swap_General_General, SplitRegister,
-)
+from pyqres.core.operation import StandardComposite
 from pyqres.generated import Swap
+from pyqres.primitives import CNOT, Hadamard, SplitRegister, Toffoli, X
+from pyqres.quantikz import LatexGenerator, OpCode, QuantikzVisitor, QuantumCircuit
 
 
 def declare_regs(**regs):
@@ -77,6 +74,22 @@ class TestCompositeLatex:
         assert r'\mathrm{Hadamard}' in latex
         assert r'\mathrm{X}' in latex
 
+    def test_controlled_composite_propagates_to_children(self):
+        class ControlledBody(StandardComposite):
+            def __init__(self):
+                super().__init__(reg_list=['ctrl', 'q'])
+                self.program_list = [X(['q'], [0])]
+                self.declare_program_list()
+
+        declare_regs(ctrl=1, q=1)
+        op = ControlledBody().control_by_bit([('ctrl', 0)])
+        vis = QuantikzVisitor()
+        op.traverse(vis)
+        latex = vis.to_latex()
+
+        assert r'\ctrl[open]{' in latex
+        assert r'\mathrm{X}' in latex
+
 
 class TestDaggerLatex:
     def test_dagger_marker(self):
@@ -88,6 +101,23 @@ class TestDaggerLatex:
         latex = vis.to_latex()
         assert r'\dagger' in latex
 
+    def test_dagger_composite_reverses_children_and_marks_each_gate(self):
+        class TwoGateBody(StandardComposite):
+            def __init__(self):
+                super().__init__(reg_list=['q'])
+                self.program_list = [Hadamard(['q']), X(['q'], [0])]
+                self.declare_program_list()
+
+        declare_regs(q=1)
+        op = TwoGateBody().dagger()
+        vis = QuantikzVisitor()
+        op.traverse(vis)
+        latex = vis.to_latex()
+
+        assert latex.index(r'\mathrm{X}^{\dagger}') < latex.index(
+            r'\mathrm{Hadamard}^{\dagger}'
+        )
+
 
 class TestSplitRegister:
     def test_split_in_circuit(self):
@@ -97,6 +127,24 @@ class TestSplitRegister:
         SplitRegister(['parent', 'child1', 'child2'], [2, 2]).traverse(vis)
         latex = vis.to_latex()
         assert 'quantikz' in latex
+        assert r'\mathrm{SplitRegister}' in latex
+
+    def test_split_can_introduce_register_rows(self):
+        declare_regs(parent=2)
+        vis = QuantikzVisitor()
+        SplitRegister(['parent', '_overflow'], [1]).traverse(vis)
+        latex = vis.to_latex()
+
+        assert r'\_overflow' in latex
+        assert r'\qwbundle{1}' in latex
+
+    def test_register_names_are_latex_escaped(self):
+        declare_regs(_overflow=1)
+        vis = QuantikzVisitor()
+        X(['_overflow'], [0]).traverse(vis)
+        latex = vis.to_latex()
+
+        assert r'\_overflow' in latex
 
 
 class TestControlTypes:
@@ -137,3 +185,11 @@ class TestLatexOutput:
         latex = vis.to_latex_figure("Test circuit")
         assert r'\begin{figure}' in latex
         assert r'\caption{Test circuit}' in latex
+
+    def test_direct_quantum_circuit_api_still_works(self):
+        circuit = QuantumCircuit({'q': 1})
+        circuit.add_op(OpCode(name='X', targets=['q'], params=[0]))
+        latex = LatexGenerator.generate(circuit)
+
+        assert r'\mathrm{X}' in latex
+        assert latex.startswith(r'\documentclass{standalone}')
