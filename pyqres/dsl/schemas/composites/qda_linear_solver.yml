@@ -56,10 +56,14 @@ impl:
     params: [0]
 
   # ── 2. State preparation of |b⟩ ─────────────────────────────────────────
-  # Uses symbol lookup: op: encode_b generates self.encode_b(...)
+  # Uses symbol lookup: encode_b can be callable or class/instance
   - comment: "State preparation |0⟩ → |b⟩ — via encode_b (operation param)"
-    op: encode_b
-    qregs: [main_reg]
+    python: |
+      if self.encode_b is not None:
+          if callable(self.encode_b):
+              self.program_list.append(self.encode_b(reg_list=[self.main_reg]))
+          else:
+              self.program_list.append(self.encode_b)
 
   # ── 3. Discrete adiabatic evolution loop ────────────────────────────────
   # Evolves from H₀ = σ_z ⊗ |0⟩⟨0| to H₁ = A ⊗ |b⟩⟨b| in n_steps.
@@ -70,11 +74,18 @@ impl:
         - python: |
             s = i / max(1, self.n_steps - 1) if self.n_steps > 1 else 1.0
             fs = compute_fs(s, self.kappa, self.p)
-
-        - comment: "WalkS = BlockEncoding_Hs(f_s) → Reflection → GlobalPhase"
-          op: WalkS
-          qregs: [main_reg, anc_UA, anc_1, anc_2, anc_3, anc_4]
-          params: [fs]
+            # Pass encode_A and encode_b as operations for block encoding
+            walk_ops = []
+            if self.encode_A:
+                walk_ops.append(self.encode_A)
+            if self.encode_b:
+                walk_ops.append(self.encode_b)
+            self.program_list.append(
+                OperationRegistry.get_class("WalkS_Primitive")(
+                    reg_list=[self.main_reg, self.anc_UA, self.anc_1,
+                             self.anc_2, self.anc_3, self.anc_4],
+                    param_list=[fs],
+                    operations=walk_ops))
 
         - comment: "WalkS dagger: reverse sequence with negated global phase"
           python: |

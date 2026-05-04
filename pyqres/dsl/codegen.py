@@ -280,11 +280,13 @@ class CodeGenerator:
         return any(k in item for k in ("loop", "loop_reverse", "if", "comment", "for_each", "python"))
 
     def _serialize_impl(self, impl: List[Dict[str, Any]]) -> str:
-        """Serialize the impl structure for storage."""
+        """Serialize the impl structure for storage as Python code."""
         import json
         # Convert to JSON-serializable form
         serializable = self._make_serializable(impl)
-        return json.dumps(serializable)
+        # Convert JSON booleans to Python booleans for valid Python syntax
+        json_str = json.dumps(serializable)
+        return json_str.replace('true', 'True').replace('false', 'False')
 
     def _make_serializable(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert impl items to JSON-serializable format."""

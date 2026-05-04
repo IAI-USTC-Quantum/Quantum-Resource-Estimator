@@ -140,20 +140,37 @@ class CompletenessChecker:
             self.add_definitions(definitions, str(yml_file))
 
     def _extract_dependencies(self, defn: Dict[str, Any]) -> Set[str]:
-        """Extract all operation names referenced in impl, including nested structures."""
+        """Extract all operation names referenced in impl, including nested structures.
+
+        Excludes declared operation parameters (type: operation) since these are
+        expected to be provided at runtime by the caller.
+        """
         deps = set()
+
+        # Collect declared operation parameters
+        declared_op_params = set()
+        for param in defn.get("params", []):
+            if isinstance(param, dict) and param.get("type") == "operation":
+                declared_op_params.add(param["name"])
+
         for call in defn.get("impl", []):
-            self._extract_deps_from_item(call, deps)
+            self._extract_deps_from_item(call, deps, declared_op_params)
         return deps
 
-    def _extract_deps_from_item(self, item: Dict[str, Any], deps: Set[str]):
+    def _extract_deps_from_item(self, item: Dict[str, Any], deps: Set[str],
+                                  declared_op_params: Set[str] = None):
         """Recursively extract dependencies from an impl item."""
         if not isinstance(item, dict):
             return
 
-        # Extract direct operation reference
+        if declared_op_params is None:
+            declared_op_params = set()
+
+        # Extract direct operation reference (skip declared operation params)
         if "op" in item:
-            deps.add(item["op"])
+            op_name = item["op"]
+            if op_name not in declared_op_params:
+                deps.add(op_name)
 
         # Python blocks don't have dependencies we can analyze
         # (user is responsible for any operations they create)
@@ -163,30 +180,30 @@ class CompletenessChecker:
         # Recurse into loop bodies
         if "loop" in item and "body" in item["loop"]:
             for body_item in item["loop"]["body"]:
-                self._extract_deps_from_item(body_item, deps)
+                self._extract_deps_from_item(body_item, deps, declared_op_params)
 
         if "loop_reverse" in item and "body" in item["loop_reverse"]:
             for body_item in item["loop_reverse"]["body"]:
-                self._extract_deps_from_item(body_item, deps)
+                self._extract_deps_from_item(body_item, deps, declared_op_params)
 
         # Recurse into for_each bodies
         if "for_each" in item and "body" in item["for_each"]:
             for body_item in item["for_each"]["body"]:
-                self._extract_deps_from_item(body_item, deps)
+                self._extract_deps_from_item(body_item, deps, declared_op_params)
 
         # Recurse into if/else/elif bodies
         if "if" in item:
             if "body" in item["if"]:
                 for body_item in item["if"]["body"]:
-                    self._extract_deps_from_item(body_item, deps)
+                    self._extract_deps_from_item(body_item, deps, declared_op_params)
             if "else" in item["if"]:
                 for body_item in item["if"]["else"]:
-                    self._extract_deps_from_item(body_item, deps)
+                    self._extract_deps_from_item(body_item, deps, declared_op_params)
             if "elif" in item["if"]:
                 for elif_def in item["if"]["elif"]:
                     if "body" in elif_def:
                         for body_item in elif_def["body"]:
-                            self._extract_deps_from_item(body_item, deps)
+                            self._extract_deps_from_item(body_item, deps, declared_op_params)
 
     def check(self) -> CompletenessReport:
         """Perform completeness check."""

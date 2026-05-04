@@ -20,7 +20,7 @@
 # Reference: Lin-Tong, PRX Quantum 3, 040303 (2022)
 # Python implementation: pyqres/algorithms/qda_solver.py
 
-name: WalkS
+name: WalkS_Primitive
 description: "Quantum walk step W_s = R · H_s via discrete adiabatic evolution"
 qregs:
   - {name: main_reg, type: General, desc: "Main data register"}
@@ -36,14 +36,10 @@ params:
 impl:
   # ── Imports and helper functions ──────────────────────────────────────
   - python: |
-      from ..primitives import (
-          Hadamard_Bool, X, Rot_Bool, Reflection_Bool,
-          GlobalPhase,
-      )
+      from pyqres.primitives import Hadamard_Bool, X, Rot_Bool, Reflection_Bool, GlobalPhase
       import math
 
       def _compute_rotation_matrix(fs):
-          """Compute R_s rotation matrix from interpolation parameter fs."""
           sqrt_n = 1.0 / math.sqrt((1 - fs) ** 2 + fs ** 2)
           r00 = sqrt_n * (1 - fs)
           r01 = sqrt_n * fs
@@ -60,8 +56,14 @@ impl:
     qregs: [anc_3]
 
   # State prep sequence 1: enc_b† → X → Reflection → X → enc_b
-  - op: encode_b
-    dagger: true
+  - python: |
+      if self.encode_b is not None:
+          # encode_b can be a callable (function returning op) or a class/instance
+          if callable(self.encode_b):
+              _enc = self.encode_b(reg_list=[self.main_reg])
+          else:
+              _enc = self.encode_b
+          self.program_list.append(_enc.dagger())
   - op: X
     qregs: [anc_1]
     params: [0]
@@ -73,7 +75,12 @@ impl:
   - op: X
     qregs: [anc_1]
     params: [0]
-  - op: encode_b
+  - python: |
+      if self.encode_b is not None:
+          if callable(self.encode_b):
+              self.program_list.append(self.encode_b(reg_list=[self.main_reg]))
+          else:
+              self.program_list.append(self.encode_b)
 
   # Rotation sequence on anc_2 (dynamic: uses computed R_s matrix)
   - op: X
@@ -93,10 +100,12 @@ impl:
 
   # Block encoding of A (using encode_A operation param)
   - python: |
-      if self.encode_A:
-          self.program_list.append(
-              self.encode_A(reg_list=[self.main_reg, self.anc_UA], param_list=[]).
-                  control_by_all_ones([self.anc_1, self.anc_2]))
+      if self.encode_A is not None:
+          if callable(self.encode_A):
+              _enc = self.encode_A(reg_list=[self.main_reg, self.anc_UA], param_list=[])
+          else:
+              _enc = self.encode_A
+          self.program_list.append(_enc.control_by_all_ones([self.anc_1, self.anc_2]))
   - op: X
     qregs: [anc_1]
     params: [0]
@@ -108,10 +117,12 @@ impl:
     controllers:
       all_ones: [anc_1]
   - python: |
-      if self.encode_A:
-          self.program_list.append(
-              self.encode_A(reg_list=[self.main_reg, self.anc_UA], param_list=[]).
-                  control_by_all_ones([self.anc_1, self.anc_2]))
+      if self.encode_A is not None:
+          if callable(self.encode_A):
+              _enc = self.encode_A(reg_list=[self.main_reg, self.anc_UA], param_list=[])
+          else:
+              _enc = self.encode_A
+          self.program_list.append(_enc.control_by_all_ones([self.anc_1, self.anc_2]))
 
   # Rotation sequence (reverse)
   - op: X
@@ -130,8 +141,13 @@ impl:
               control_by_all_ones([self.anc_4]))
 
   # State prep sequence 2: enc_b† → X → Reflection → X → enc_b
-  - op: encode_b
-    dagger: true
+  - python: |
+      if self.encode_b is not None:
+          if callable(self.encode_b):
+              _enc = self.encode_b(reg_list=[self.main_reg])
+          else:
+              _enc = self.encode_b
+          self.program_list.append(_enc.dagger())
   - op: X
     qregs: [anc_1]
     params: [0]
@@ -143,7 +159,12 @@ impl:
   - op: X
     qregs: [anc_1]
     params: [0]
-  - op: encode_b
+  - python: |
+      if self.encode_b is not None:
+          if callable(self.encode_b):
+              self.program_list.append(self.encode_b(reg_list=[self.main_reg]))
+          else:
+              self.program_list.append(self.encode_b)
 
   - op: Hadamard_Bool
     qregs: [anc_3]
@@ -152,8 +173,8 @@ impl:
   - op: Reflection_Bool
     qregs: [anc_UA, anc_2, anc_3]
     params: [false]
-  - op: GlobalPhase
-    qregs: [anc_UA]
-    params: [1j]
+  - python: |
+      self.program_list.append(
+          GlobalPhase(reg_list=[self.anc_UA], param_list=[complex(0, 1)]))
 
 sum_t_count_formula: custom

@@ -24,6 +24,7 @@ from .QuantumWalkSearch import QuantumWalkSearch
 from .QuantumWalkStep import QuantumWalkStep
 from .ShorFactor import ShorFactor
 from .SimpleStatePrep import SimpleStatePrep
+from .WalkS_Primitive import WalkS_Primitive
 
 __all__ = [
     "Swap",
@@ -50,4 +51,5 @@ __all__ = [
     "QuantumWalkStep",
     "ShorFactor",
     "SimpleStatePrep",
+    "WalkS_Primitive",
 ]
