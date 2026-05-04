@@ -60,6 +60,13 @@ class CombineRegister(Primitive):
         self.first = reg_list[0]
         self.second = reg_list[1]
 
+    def enter(self, dagger_ctx=False, controllers_ctx=None):
+        # Mirror SplitRegister.enter(): restore metadata when combining forward.
+        register_metadata_ = RegisterMetadata.get_register_metadata()
+        dagger_ctx = self.dagger_flag ^ dagger_ctx
+        if not dagger_ctx:
+            register_metadata_.merge_register(self.first, [self.second])
+
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
         controllers_ctx = merge_controllers(self.controllers, controllers_ctx or {})
         obj = PyQSparseOperationWrapper(

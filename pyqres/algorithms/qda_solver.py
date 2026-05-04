@@ -373,7 +373,10 @@ class WalkS_Primitive(AbstractComposite):
         ops.append(
             Reflection_Bool(reg_list=[self.anc_2], param_list=[True]).
             control_by_all_ones([self.anc_1]))
-        ops.append(self._enc_A_op().dagger().control_by_all_ones([self.anc_1, self.anc_2]))
+        # NOTE: no .dagger() — WalkS_Primitive.traverse_children reverses
+        # the entire op sequence when WalkS itself is daggered, so each child
+        # must keep dagger_flag=False to avoid double-dagger.
+        ops.append(self._enc_A_op().control_by_all_ones([self.anc_1, self.anc_2]))
 
         # Rotation sequence (reverse)
         ops.append(X(reg_list=[self.anc_4], param_list=[0]))

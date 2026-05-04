@@ -49,7 +49,8 @@ from .measurement import (
 from .debug import DebugPrimitive, CheckNan, CheckNormalization
 
 # Intermediate / QEC-compiler layer
-from .intermediate import MCX, ADD, PLUS_ONE, REFLECT, MOD_ADD, MOD_MUL, QECGate
+from .intermediate import MCX, ADD, PLUS_ONE, REFLECT, MOD_ADD, MOD_MUL
+from .qec_gate import QECGate
 
 __all__ = [
     # Gates
@@ -94,5 +95,7 @@ __all__ = [
     "DebugPrimitive", "CheckNan", "CheckNormalization",
     # Intermediate / QEC-compiler layer
     "MCX", "ADD", "PLUS_ONE", "REFLECT",
-    "MOD_ADD", "MOD_MUL", "QECGate",
+    "MOD_ADD", "MOD_MUL",
+    # Compiler-only
+    "QECGate",
 ]

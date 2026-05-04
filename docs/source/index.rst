@@ -48,6 +48,12 @@ QEC-Compiler ``AbstractCircuit``，进入 QEC-level schedule/QEOL 资源计算�
 
 .. toctree::
    :maxdepth: 2
+   :caption: QEC 集成
+
+   qec_integration
+
+.. toctree::
+   :maxdepth: 2
    :caption: 模拟与可视化
 
    simulation/index

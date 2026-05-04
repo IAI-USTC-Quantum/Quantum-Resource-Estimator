@@ -1,4 +1,11 @@
-"""QRAM is explicitly disabled in the current pyqres/QEC workflow."""
+"""Tests that QRAM/QRAMFast fail closed with NotImplementedError.
+
+These tests codify the contract: QRAM primitives must NOT silently provide
+dummy or approximate behavior.  They must raise NotImplementedError until
+a written QRAM contract exists.
+
+If you are implementing QRAM, update these tests to match the new contract.
+"""
 
 from __future__ import annotations
 
@@ -7,23 +14,64 @@ import pytest
 from pyqres.core.metadata import RegisterMetadata
 
 
-def _declare_qram_regs() -> None:
-    rm = RegisterMetadata.get_register_metadata()
-    rm.declare_register("addr", 2, "UnsignedInteger")
-    rm.declare_register("data", 3, "UnsignedInteger")
+@pytest.fixture(autouse=True)
+def fresh_metadata():
+    while len(RegisterMetadata.register_metadata_stack):
+        RegisterMetadata.pop_register_metadata()
+    RegisterMetadata.push_register_metadata()
+    yield
+    while len(RegisterMetadata.register_metadata_stack):
+        RegisterMetadata.pop_register_metadata()
+    RegisterMetadata.push_register_metadata()
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True, reason="QRAM contract deferred")
-def test_qram_reference_is_deferred_xfail():
-    from pyqres.primitives import QRAM
-
-    _declare_qram_regs()
-    QRAM(["addr", "data"], [0]).pyqsparse_object()
+def _declare_reg(name, size, reg_type="General"):
+    RegisterMetadata.get_register_metadata().declare_register(name, size, reg_type)
 
 
-@pytest.mark.xfail(raises=NotImplementedError, strict=True, reason="QRAM contract deferred")
-def test_qramfast_reference_is_deferred_xfail():
-    from pyqres.primitives import QRAMFast
+class TestQRAMFailClosed:
+    """QRAM must raise NotImplementedError on all operational methods."""
 
-    _declare_qram_regs()
-    QRAMFast(["addr", "data"], [None]).pyqsparse_object()
+    def test_qram_pysparse_object_raises(self):
+        from pyqres.primitives.qram import QRAM
+
+        _declare_reg("addr", 2, "UnsignedInteger")
+        _declare_reg("data", 3, "UnsignedInteger")
+        op = QRAM(reg_list=["addr", "data"], param_list=[0])
+
+        with pytest.raises(NotImplementedError, match="QRAM.*disabled"):
+            op.pyqsparse_object()
+
+    def test_qram_t_count_raises(self):
+        from pyqres.primitives.qram import QRAM
+
+        _declare_reg("addr", 2, "UnsignedInteger")
+        _declare_reg("data", 3, "UnsignedInteger")
+        op = QRAM(reg_list=["addr", "data"], param_list=[0])
+
+        with pytest.raises(NotImplementedError, match="QRAM.*disabled"):
+            op.t_count()
+
+
+class TestQRAMFastFailClosed:
+    """QRAMFast must raise NotImplementedError on all operational methods."""
+
+    def test_qramfast_pysparse_object_raises(self):
+        from pyqres.primitives.qram import QRAMFast
+
+        _declare_reg("addr", 2, "UnsignedInteger")
+        _declare_reg("data", 3, "UnsignedInteger")
+        op = QRAMFast(reg_list=["addr", "data"], param_list=[None])
+
+        with pytest.raises(NotImplementedError, match="QRAMFast.*disabled"):
+            op.pyqsparse_object()
+
+    def test_qramfast_t_count_raises(self):
+        from pyqres.primitives.qram import QRAMFast
+
+        _declare_reg("addr", 2, "UnsignedInteger")
+        _declare_reg("data", 3, "UnsignedInteger")
+        op = QRAMFast(reg_list=["addr", "data"], param_list=[None])
+
+        with pytest.raises(NotImplementedError, match="QRAMFast.*disabled"):
+            op.t_count()

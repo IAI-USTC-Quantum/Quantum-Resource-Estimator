@@ -1,52 +1,60 @@
-"""QRAM primitives.
+"""QRAM primitives — currently disabled (fail-closed).
 
-QRAM support is intentionally disabled in the current pyqres -> QEC-Compiler
-workflow. Direct PySparQ QRAM experiments can still be run outside pyqres, but
-the pyqres wrappers must not provide dummy memories or approximate references
-until a shared QRAM contract is defined.
+QRAM and QRAMFast are intentionally non-functional until a written QRAM
+contract exists.  Both ``pyqsparse_object()`` and ``t_count()`` raise
+``NotImplementedError``.
+
+See ``docs/qram_contract.md`` for the contract questions that must be
+answered before implementation work begins.
 """
 
 from ..core.operation import Primitive
 
 
-_QRAM_DISABLED_MESSAGE = (
-    "pyqres QRAM primitives are intentionally disabled for the current "
-    "pyqres -> QEC-Compiler workflow. Use direct PySparQ QRAM experiments "
-    "outside pyqres, or wait for the future QRAM contract/reference fix."
-)
-
-
 class QRAM(Primitive):
+    """Quantum random-access memory load primitive (DISABLED).
+
+    Once implemented, will load data from a QRAM circuit at the address
+    in addr_reg into data_reg.  Currently raises NotImplementedError on
+    all operational methods.
+    """
+
     def __init__(self, reg_list, param_list):
         super().__init__(reg_list=reg_list, param_list=param_list)
-        self.reg_addr = reg_list[0]
-        self.reg_data = reg_list[1]
-        self.data_id = param_list[0] if param_list else None
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
-        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
+        raise NotImplementedError(
+            "QRAM.pyqsparse_object() is disabled until the QRAM contract "
+            "is defined. See docs/qram_contract.md."
+        )
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
-        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
+        raise NotImplementedError(
+            "QRAM.t_count() is disabled until the QRAM contract "
+            "is defined. See docs/qram_contract.md."
+        )
 
 
 class QRAMFast(Primitive):
-    """Fast QRAM loading placeholder.
+    """Fast QRAM loading using the bucket-brigade protocol (DISABLED).
 
-    Kept as a registered primitive so existing YAML/Python definitions fail
-    explicitly instead of breaking imports.
+    Once implemented, will load data from a QRAM circuit at high speed.
+    Currently raises NotImplementedError on all operational methods.
     """
 
     __self_conjugate__ = True
 
     def __init__(self, reg_list, param_list):
         super().__init__(reg_list=reg_list, param_list=param_list)
-        self.qram = param_list[0] if param_list else None
-        self.addr_reg = reg_list[0]
-        self.data_reg = reg_list[1]
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
-        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
+        raise NotImplementedError(
+            "QRAMFast.pyqsparse_object() is disabled until the QRAM contract "
+            "is defined. See docs/qram_contract.md."
+        )
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
-        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
+        raise NotImplementedError(
+            "QRAMFast.t_count() is disabled until the QRAM contract "
+            "is defined. See docs/qram_contract.md."
+        )

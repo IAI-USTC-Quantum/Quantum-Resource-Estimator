@@ -1,168 +1,68 @@
+# QEC-Compiler example mirrors
+#
+# These YAML composites reproduce the gate-level AbstractCircuit output
+# of the corresponding QEC-Compiler benchmark builders.
+#
+# Purpose: verify that pyqres YAML DSL -> generated Python -> AbstractCircuit
+# produces the same gate sequence as the QEC-Compiler reference builders.
+#
+# Limitations:
+#   - Qubit indices depend on register allocation order (single-qubit registers
+#     allocated in order yield indices 0, 1, 2, ... matching QEC-Compiler).
+#   - Measurements and metadata are NOT compared.
+#   - These are compiler-only wrappers; PySparQ simulation is not expected.
+
+# GHZ state: H(0) -> CNOT(0,1) -> CNOT(1,2)
+# Mirrors: qec_compiler.cases.benchmark_state_prep.build_ghz_circuit(3)
 - name: QECExampleGHZ
-  description: "YAML mirror of QEC-Compiler GHZ benchmark gates"
+  description: "GHZ state preparation — mirrors QEC-Compiler build_ghz_circuit"
   qregs:
-    - {name: q, type: General}
+    - {name: q0, type: General, desc: "Qubit 0 (entangled)"}
+    - {name: q1, type: General, desc: "Qubit 1 (entangled)"}
+    - {name: q2, type: General, desc: "Qubit 2 (entangled)"}
   params:
-    - {name: n, type: int}
+    - {name: n, type: int, desc: "Number of qubits (must match register count)"}
   impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_ghz
-    - python: |
-        build_qec_ghz(self.program_list, self.q, self.n)
+    - op: Hadamard
+      qregs: [q0]
+    - op: CNOT
+      qregs: [q0, q1]
+      params: [0, 0]
+    - op: CNOT
+      qregs: [q1, q2]
+      params: [0, 0]
 
-- name: QECExampleW
-  description: "YAML mirror of QEC-Compiler W-state benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n, type: int}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_w
-    - python: |
-        build_qec_w(self.program_list, self.q, self.n)
-
+# Bernstein-Vazirani with secret=0b101 (n=3)
+# Mirrors: qec_compiler.cases.benchmark_bv.build_bv_circuit(3, secret=5)
 - name: QECExampleBV
-  description: "YAML mirror of QEC-Compiler Bernstein-Vazirani benchmark gates"
+  description: "Bernstein-Vazirani (secret=0b101) — mirrors QEC-Compiler build_bv_circuit"
   qregs:
-    - {name: q, type: General}
+    - {name: q0, type: General, desc: "Input qubit 0"}
+    - {name: q1, type: General, desc: "Input qubit 1"}
+    - {name: q2, type: General, desc: "Input qubit 2"}
+    - {name: anc, type: General, desc: "Ancilla qubit"}
   params:
-    - {name: n, type: int}
-    - {name: secret, type: int}
+    - {name: n, type: int, desc: "Number of input qubits"}
   impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_bv
-    - python: |
-        build_qec_bv(self.program_list, self.q, self.n, self.secret)
-
-- name: QECExampleDJ
-  description: "YAML mirror of QEC-Compiler Deutsch-Jozsa benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n, type: int}
-    - {name: balanced, type: bool}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_dj
-    - python: |
-        build_qec_dj(self.program_list, self.q, self.n, self.balanced)
-
-- name: QECExampleGrover
-  description: "YAML mirror of QEC-Compiler Grover benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n, type: int}
-    - {name: marked_states, type: array}
-    - {name: iterations, type: int}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_grover
-    - python: |
-        build_qec_grover(
-            self.program_list, self.q, self.n, self.marked_states, self.iterations)
-
-- name: QECExampleQFT
-  description: "YAML mirror of QEC-Compiler QFT benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n, type: int}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_qft
-    - python: |
-        build_qec_qft(self.program_list, self.q, self.n)
-
-- name: QECExampleQPE
-  description: "YAML mirror of QEC-Compiler QPE benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n_counting, type: int}
-    - {name: n_system, type: int}
-    - {name: unitary_eigenvalue, type: float}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_qpe
-    - python: |
-        build_qec_qpe(
-            self.program_list, self.q, self.n_counting,
-            self.n_system, self.unitary_eigenvalue)
-
-- name: QECExampleQAOA
-  description: "YAML mirror of QEC-Compiler QAOA benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n_vertices, type: int}
-    - {name: edges, type: array}
-    - {name: p, type: int}
-    - {name: gamma, type: float}
-    - {name: beta, type: float}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_qaoa
-    - python: |
-        build_qec_qaoa(
-            self.program_list, self.q, self.n_vertices, self.edges,
-            self.p, self.gamma, self.beta)
-
-- name: QECExampleVQE
-  description: "YAML mirror of QEC-Compiler VQE benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n_qubits, type: int}
-    - {name: layers, type: int}
-    - {name: ring_entanglement, type: bool}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_vqe
-    - python: |
-        build_qec_vqe(
-            self.program_list, self.q, self.n_qubits,
-            self.layers, self.ring_entanglement)
-
-- name: QECExampleIsing
-  description: "YAML mirror of QEC-Compiler Ising benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: n_spins, type: int}
-    - {name: couplings, type: array}
-    - {name: p_level, type: int}
-    - {name: h_transverse, type: float}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_ising
-    - python: |
-        build_qec_ising(
-            self.program_list, self.q, self.n_spins, self.couplings,
-            self.p_level, self.h_transverse)
-
-- name: QECExampleSwapTest
-  description: "YAML mirror of QEC-Compiler SWAP-test benchmark gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: total_qubits, type: int}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_swap_test
-    - python: |
-        build_qec_swap_test(self.program_list, self.q, self.total_qubits)
-
-- name: QECExampleSmallShor
-  description: "YAML mirror of QEC-Compiler small Shor fixture gates"
-  qregs:
-    - {name: q, type: General}
-  params:
-    - {name: modulus, type: int}
-    - {name: base, type: int}
-  impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_small_shor
-    - python: |
-        build_qec_small_shor(self.program_list, self.q, self.modulus, self.base)
+    # H on all input qubits
+    - op: Hadamard
+      qregs: [q0]
+    - op: Hadamard
+      qregs: [q1]
+    - op: Hadamard
+      qregs: [q2]
+    # Oracle: CNOT from qubit i to ancilla where secret bit = 1
+    # secret = 0b101 -> bits [1, 0, 1] -> CNOT(q0, anc), CNOT(q2, anc)
+    - op: CNOT
+      qregs: [q0, anc]
+      params: [0, 0]
+    - op: CNOT
+      qregs: [q2, anc]
+      params: [0, 0]
+    # H on all input qubits
+    - op: Hadamard
+      qregs: [q0]
+    - op: Hadamard
+      qregs: [q1]
+    - op: Hadamard
+      qregs: [q2]

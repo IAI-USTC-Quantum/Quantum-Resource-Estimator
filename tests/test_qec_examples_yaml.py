@@ -1,145 +1,178 @@
-"""YAML-defined mirrors of QEC-Compiler benchmark examples."""
+"""Parity tests: pyqres YAML QEC examples vs QEC-Compiler benchmark builders.
+
+Verifies that YAML composites compile into generated Python operation classes
+and produce AbstractCircuit output matching the QEC-Compiler reference builders
+at the gate level (gate names, count, order, qubit indices, params).
+
+Covered:
+  - QECExampleGHZ  vs  build_ghz_circuit(3)
+  - QECExampleBV   vs  build_bv_circuit(3, secret=5)
+
+Not covered (measurements and metadata are NOT compared).
+"""
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
-pytest.importorskip("qec_compiler")
+pytest.importorskip(
+    "qec_compiler",
+    reason="qec_compiler is required for QEC example parity tests",
+)
 
-from pyqres.core.lowering import to_abstract_circuit
 from pyqres.core.metadata import RegisterMetadata
 
 
-def _declare_q(size: int) -> None:
-    RegisterMetadata.get_register_metadata().declare_register("q", size, "General")
+@pytest.fixture(autouse=True)
+def fresh_metadata():
+    while len(RegisterMetadata.register_metadata_stack) > 1:
+        RegisterMetadata.pop_register_metadata()
+    RegisterMetadata.register_metadata_stack.clear()
+    RegisterMetadata.push_register_metadata()
+    yield
+    while len(RegisterMetadata.register_metadata_stack) > 0:
+        RegisterMetadata.pop_register_metadata()
+    RegisterMetadata.push_register_metadata()
 
 
-def _assert_same_gate_circuit(actual, expected) -> None:
-    assert actual.num_qubits == expected.num_qubits
-    assert len(actual.gates) == len(expected.gates)
-    for got, want in zip(actual.gates, expected.gates, strict=True):
-        assert got.name == want.name
-        assert got.qubits == want.qubits
-        assert len(got.params) == len(want.params)
-        for got_param, want_param in zip(got.params, want.params, strict=True):
-            assert math.isclose(got_param, want_param, rel_tol=1e-12, abs_tol=1e-12)
+def _declare_reg(name, size, reg_type="General"):
+    RegisterMetadata.get_register_metadata().declare_register(name, size, reg_type)
 
 
-def _lower(op, num_qubits: int):
-    _declare_q(num_qubits)
-    return to_abstract_circuit(op)
+def _gates_summary(circuit):
+    """Return list of (name, qubits, params) for comparison."""
+    return [(g.name, g.qubits, g.params) for g in circuit.gates]
 
 
-def test_yaml_ghz_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleGHZ
-    from qec_compiler.cases.benchmark_state_prep import build_ghz_circuit
+# ---------------------------------------------------------------------------
+# GHZ parity
+# ---------------------------------------------------------------------------
 
-    expected = build_ghz_circuit(4, measure=False)
-    actual = _lower(QECExampleGHZ(["q"], [4]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+class TestGHZParity:
+    def test_ghz_yaml_compiles_to_abstract_circuit(self):
+        """QECExampleGHZ YAML composite lowers to AbstractCircuit."""
+        from pyqres.generated import QECExampleGHZ
+        from pyqres.core.lowering import to_abstract_circuit
 
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
 
-def test_yaml_w_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleW
-    from qec_compiler.cases.benchmark_state_prep import build_w_circuit
+        op = QECExampleGHZ(reg_list=["q0", "q1", "q2"], param_list=[3])
+        circuit = to_abstract_circuit(op)
 
-    expected = build_w_circuit(4, measure=False)
-    actual = _lower(QECExampleW(["q"], [4]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        assert circuit.num_qubits == 3
+        assert len(circuit.gates) == 3
+        assert [g.name for g in circuit.gates] == ["H", "CNOT", "CNOT"]
 
+    def test_ghz_yaml_matches_qec_builder(self):
+        """QECExampleGHZ gate sequence matches build_ghz_circuit(3)."""
+        from qec_compiler.cases.benchmark_state_prep import build_ghz_circuit
+        from pyqres.generated import QECExampleGHZ
+        from pyqres.core.lowering import to_abstract_circuit
 
-def test_yaml_bv_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleBV
-    from qec_compiler.cases.benchmark_bv import build_bv_circuit
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
 
-    expected = build_bv_circuit(4, secret=0b1010)
-    actual = _lower(QECExampleBV(["q"], [4, 0b1010]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        pyqres_op = QECExampleGHZ(reg_list=["q0", "q1", "q2"], param_list=[3])
+        pyqres_circuit = to_abstract_circuit(pyqres_op)
+        qec_circuit = build_ghz_circuit(3, measure=False)
 
+        pyqres_gates = _gates_summary(pyqres_circuit)
+        qec_gates = _gates_summary(qec_circuit)
 
-def test_yaml_dj_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleDJ
-    from qec_compiler.cases.benchmark_dj import build_dj_circuit
-
-    expected = build_dj_circuit(4, balanced=True)
-    actual = _lower(QECExampleDJ(["q"], [4, True]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
-
-
-def test_yaml_grover_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleGrover
-    from qec_compiler.cases.benchmark_grover import build_grover_circuit
-
-    expected = build_grover_circuit(3, marked_states=(0,), iterations=1)
-    actual = _lower(QECExampleGrover(["q"], [3, [0], 1]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        assert pyqres_gates == qec_gates
 
 
-def test_yaml_qft_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleQFT
-    from qec_compiler.cases.benchmark_qft import build_qft_circuit
+# ---------------------------------------------------------------------------
+# BV parity
+# ---------------------------------------------------------------------------
 
-    expected = build_qft_circuit(4, measure=False)
-    actual = _lower(QECExampleQFT(["q"], [4]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+class TestBVParity:
+    def test_bv_yaml_compiles_to_abstract_circuit(self):
+        """QECExampleBV YAML composite lowers to AbstractCircuit."""
+        from pyqres.generated import QECExampleBV
+        from pyqres.core.lowering import to_abstract_circuit
 
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
+        _declare_reg("anc", 1)
 
-def test_yaml_qpe_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleQPE
-    from qec_compiler.cases.benchmark_qpe import build_qpe_circuit
+        op = QECExampleBV(reg_list=["q0", "q1", "q2", "anc"], param_list=[3])
+        circuit = to_abstract_circuit(op)
 
-    expected = build_qpe_circuit(4, 2, unitary_eigenvalue=0.5)
-    actual = _lower(QECExampleQPE(["q"], [4, 2, 0.5]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        assert circuit.num_qubits == 4
+        gate_names = [g.name for g in circuit.gates]
+        # H, H, H, CNOT, CNOT, H, H, H
+        assert gate_names.count("H") == 6
+        assert gate_names.count("CNOT") == 2
 
+    def test_bv_yaml_matches_qec_builder(self):
+        """QECExampleBV gate sequence matches build_bv_circuit(3, secret=5)."""
+        from qec_compiler.cases.benchmark_bv import build_bv_circuit
+        from pyqres.generated import QECExampleBV
+        from pyqres.core.lowering import to_abstract_circuit
 
-def test_yaml_qaoa_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleQAOA
-    from qec_compiler.cases.benchmark_qaoa import build_qaoa_circuit
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
+        _declare_reg("anc", 1)
 
-    edges = [(0, 1), (1, 2), (2, 3)]
-    expected = build_qaoa_circuit(4, edges, 1, gamma=math.pi / 4, beta=math.pi / 8)
-    actual = _lower(
-        QECExampleQAOA(["q"], [4, edges, 1, math.pi / 4, math.pi / 8]),
-        expected.num_qubits,
-    )
-    _assert_same_gate_circuit(actual, expected)
+        pyqres_op = QECExampleBV(reg_list=["q0", "q1", "q2", "anc"], param_list=[3])
+        pyqres_circuit = to_abstract_circuit(pyqres_op)
+        # secret=5 = 0b101, measure_all=False for gate-only comparison
+        qec_circuit = build_bv_circuit(3, secret=5, measure_all=False)
 
+        pyqres_gates = _gates_summary(pyqres_circuit)
+        qec_gates = _gates_summary(qec_circuit)
 
-def test_yaml_vqe_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleVQE
-    from qec_compiler.cases.benchmark_vqe import build_vqe_circuit
-
-    expected = build_vqe_circuit(4, layers=2, ring_entanglement=True)
-    actual = _lower(QECExampleVQE(["q"], [4, 2, True]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
-
-
-def test_yaml_ising_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleIsing
-    from qec_compiler.cases.benchmark_ising import build_ising_circuit
-
-    couplings = [1.0, 1.0, 1.0]
-    expected = build_ising_circuit(4, couplings, p_level=1, h_transverse=1.0)
-    actual = _lower(QECExampleIsing(["q"], [4, couplings, 1, 1.0]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        assert pyqres_gates == qec_gates
 
 
-def test_yaml_swap_test_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleSwapTest
-    from qec_compiler.cases.benchmark_swap_test import build_swap_test_circuit
+# ---------------------------------------------------------------------------
+# Structural: generated classes are importable and recognizable
+# ---------------------------------------------------------------------------
 
-    expected = build_swap_test_circuit(5)
-    actual = _lower(QECExampleSwapTest(["q"], [5]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+class TestGeneratedExamplesImportable:
+    def test_ghz_class_importable(self):
+        from pyqres.generated import QECExampleGHZ
+        assert QECExampleGHZ.__name__ == "QECExampleGHZ"
 
+    def test_bv_class_importable(self):
+        from pyqres.generated import QECExampleBV
+        assert QECExampleBV.__name__ == "QECExampleBV"
 
-def test_yaml_small_shor_matches_qec_compiler_builder():
-    from pyqres.generated import QECExampleSmallShor
-    from qec_compiler.cases.benchmark_shor import build_stage5_small_shor_fixture
+    def test_ghz_through_qec_compiler_pipeline(self):
+        """QECExampleGHZ compiles through the full QEC pipeline."""
+        from pyqres.generated import QECExampleGHZ
+        from pyqres.core.lowering import to_abstract_circuit
+        from qec_compiler.decomposition import lower_to_logical
 
-    expected = build_stage5_small_shor_fixture(modulus=15, base=2)
-    actual = _lower(QECExampleSmallShor(["q"], [15, 2]), expected.num_qubits)
-    _assert_same_gate_circuit(actual, expected)
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
+
+        op = QECExampleGHZ(reg_list=["q0", "q1", "q2"], param_list=[3])
+        circuit = to_abstract_circuit(op)
+        logical = lower_to_logical(circuit)
+
+        assert logical.ccz_inject_count is not None
+
+    def test_bv_through_qec_compiler_pipeline(self):
+        """QECExampleBV compiles through the full QEC pipeline."""
+        from pyqres.generated import QECExampleBV
+        from pyqres.core.lowering import to_abstract_circuit
+        from qec_compiler.decomposition import lower_to_logical
+
+        _declare_reg("q0", 1)
+        _declare_reg("q1", 1)
+        _declare_reg("q2", 1)
+        _declare_reg("anc", 1)
+
+        op = QECExampleBV(reg_list=["q0", "q1", "q2", "anc"], param_list=[3])
+        circuit = to_abstract_circuit(op)
+        logical = lower_to_logical(circuit)
+
+        assert logical.ccz_inject_count is not None

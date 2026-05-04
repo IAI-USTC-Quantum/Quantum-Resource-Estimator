@@ -8,3 +8,6 @@ __pycache__/
 
 # Sphinx documentation build
 docs/build/
+
+# QEOL output artifacts
+runs/
