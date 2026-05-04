@@ -1,17 +1,32 @@
-.. Quantum-Resource-Estimator documentation master file
-
 Quantum-Resource-Estimator (pyqres) 文档
 ========================================
 
-Quantum-Resource-Estimator 是一个基于 Python 的量子计算资源估计工具，采用 **寄存器级编程范式**，
-估算 T-count、T-depth、Toffoli-count、Toffoli-depth，
-对接 PySparQ C++ 模拟器，支持 Quantikz LaTeX 线路图生成。
+Quantum-Resource-Estimator 是一个 register-level 量子算法编程、模拟、资源估计和
+QEC 编译对接工具。当前主线是把 pyqres 作为算法 authoring layer：算法先写成 YAML DSL
+或 Python ``Operation`` tree，再用 PySparQ 做小规模语义验证，最后 lowering 到
+QEC-Compiler ``AbstractCircuit``，进入 QEC-level schedule/QEOL 资源计算。
+
+核心链路：
+
+.. code-block:: text
+
+   YAML DSL / Python Operation tree
+      -> PySparQ simulation when supported
+      -> pyqres QEC lowering
+      -> QEC-Compiler AbstractCircuit
+      -> logical lowering / lattice surgery / QEOL
 
 .. toctree::
    :maxdepth: 2
    :caption: 快速开始
 
    getting_started/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: 联合工作流
+
+   workflow/index
 
 .. toctree::
    :maxdepth: 2

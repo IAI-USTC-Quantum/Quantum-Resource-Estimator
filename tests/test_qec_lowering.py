@@ -218,6 +218,19 @@ class TestEndToEndCompilation:
         assert [g.name for g in mod_mul_circuit.gates] == ["MOD_MUL"]
         assert lower_to_logical(mod_mul_circuit).ccz_inject_count > 0
 
+    def test_mod_add_allocates_clean_flag_qubit(self):
+        """MOD_ADD lowering emits a clean flag ancilla and counts it in num_qubits."""
+        from pyqres.primitives import MOD_ADD
+
+        _declare_reg("a", 2, "UnsignedInteger")
+        _declare_reg("b", 2, "UnsignedInteger")
+        circuit = _to_circuit(MOD_ADD(reg_list=["a", "b"], param_list=[3]))
+
+        assert circuit.num_qubits == 5
+        assert [g.name for g in circuit.gates] == ["MOD_ADD"]
+        assert circuit.gates[0].qubits == (0, 1, 2, 3, 4)
+        assert circuit.gates[0].params == (3.0,)
+
     def test_intermediate_dagger_gate_names(self):
         """Intermediate arithmetic dagger lowers to inverse QEC gate names."""
         from pyqres.primitives import ADD, MOD_ADD, MOD_MUL, PLUS_ONE
@@ -383,3 +396,37 @@ class TestWalkSLowering:
         circuit = _to_circuit(op)
         logical = lower_to_logical(circuit)
         assert logical.ccz_inject_count > 0
+
+    @pytest.mark.parametrize("main_bits", [1, 2, 3])
+    def test_generated_qda_tridiagonal_lowers_for_matrix_sizes(self, main_bits):
+        """QDA-tridiagonal lowers automatically for multiple matrix dimensions."""
+        from pyqres.algorithms.block_encoding import BlockEncodingTridiagonal
+        from pyqres.generated import QDALinearSolver
+        from qec_compiler.decomposition import lower_to_logical
+
+        _declare_reg("main", main_bits, "UnsignedInteger")
+        _declare_reg("anc_UA", 4, "UnsignedInteger")
+        _declare_reg("anc_1", 1, "Boolean")
+        _declare_reg("anc_2", 1, "Boolean")
+        _declare_reg("anc_3", 1, "Boolean")
+        _declare_reg("anc_4", 1, "Boolean")
+
+        def make_enc_A(reg_list=None, param_list=None):
+            return BlockEncodingTridiagonal(
+                reg_list=reg_list,
+                main_reg=reg_list[0],
+                anc_UA=reg_list[1],
+                alpha=0.5,
+                beta=0.3,
+            )
+
+        op = QDALinearSolver(
+            reg_list=["main", "anc_UA", "anc_1", "anc_2", "anc_3", "anc_4"],
+            param_list=[2.0, 1.0],
+            operations=[make_enc_A],
+        )
+
+        circuit = _to_circuit(op)
+        assert circuit.num_qubits >= main_bits + 8
+        assert len(circuit.gates) > 0
+        assert lower_to_logical(circuit).ccz_inject_count is not None
