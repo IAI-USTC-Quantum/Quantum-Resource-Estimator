@@ -21,6 +21,102 @@ def _lazy_abstract_gate(name: str, qubits: tuple[int, ...], params: tuple[float,
     return AbstractGate(name=name, qubits=qubits, params=params)
 
 
+class _IndexedIRGate(Primitive):
+    """Base for QEC-Compiler IR gates addressed by register-local qubit index."""
+
+    __abstract__ = True
+    __self_conjugate__ = False
+    gate_name = ""
+    qubit_count = 0
+
+    def __init__(self, reg_list=None, param_list=None):
+        super().__init__(reg_list=reg_list, param_list=param_list or [])
+        self.register = reg_list[0] if reg_list else None
+        self.bit_indices = tuple(int(q) for q in self.param_list[:self.qubit_count])
+        self.gate_params = tuple(float(p) for p in self.param_list[self.qubit_count:])
+
+    def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
+        raise NotImplementedError(
+            f"{type(self).__name__} is a QEC IR primitive. "
+            "Add a PySparQ reference before using it for simulation."
+        )
+
+    def t_count(self, dagger_ctx=False, controllers_ctx=None):
+        if self.gate_name in {"H", "X", "Y", "Z", "CNOT", "SWAP"}:
+            return 0
+        raise NotImplementedError(
+            f"{type(self).__name__} has no pyqres-local T-count model. "
+            "Lower it through QEC-Compiler for resource accounting."
+        )
+
+    def to_abstract_gates(self, qubit_map):
+        if self.register not in qubit_map:
+            raise ValueError(f"Register {self.register!r} is not allocated")
+        reg_qubits = qubit_map[self.register]
+        qubits = tuple(reg_qubits[index] for index in self.bit_indices)
+        return [_lazy_abstract_gate(self.gate_name, qubits, self.gate_params)]
+
+
+class H(_IndexedIRGate):
+    """Hadamard gate. Maps directly to AbstractGate('H')."""
+
+    __self_conjugate__ = True
+    gate_name = "H"
+    qubit_count = 1
+
+
+class Z(_IndexedIRGate):
+    """Pauli-Z gate. Maps directly to AbstractGate('Z')."""
+
+    __self_conjugate__ = True
+    gate_name = "Z"
+    qubit_count = 1
+
+
+class SWAP(_IndexedIRGate):
+    """Two-qubit SWAP gate. Maps directly to AbstractGate('SWAP')."""
+
+    __self_conjugate__ = True
+    gate_name = "SWAP"
+    qubit_count = 2
+
+
+class CPHASE(_IndexedIRGate):
+    """Controlled phase rotation. param_list: [control, target, theta]."""
+
+    gate_name = "CPHASE"
+    qubit_count = 2
+
+
+class RX(_IndexedIRGate):
+    """X-axis rotation. param_list: [target, theta]."""
+
+    gate_name = "RX"
+    qubit_count = 1
+
+
+class RY(_IndexedIRGate):
+    """Y-axis rotation. param_list: [target, theta]."""
+
+    gate_name = "RY"
+    qubit_count = 1
+
+
+class RZ(_IndexedIRGate):
+    """Z-axis rotation. param_list: [target, theta]."""
+
+    gate_name = "RZ"
+    qubit_count = 1
+
+
+class CCX(_IndexedIRGate):
+    """Toffoli gate. Maps directly to AbstractGate('CCX')."""
+
+    __self_conjugate__ = True
+    gate_name = "CCX"
+    qubit_count = 3
+
+
 class MCX(Primitive):
     """Multi-controlled X gate. Maps directly to AbstractGate('MCX')."""
 
@@ -217,41 +313,32 @@ class MOD_MUL(Primitive):
                                     (self.multiplier, self.modulus))]
 
 
-class QECGate(Primitive):
-    """Compiler-only adapter for exact QEC-Compiler example mirroring.
+class CMUL_MOD_N(Primitive):
+    """Controlled modular multiplication.
 
-    ``QECGate`` is intentionally not a portable algorithm primitive. It exists
-    so YAML-defined pyqres examples can emit the same gate-level
-    ``AbstractCircuit`` as QEC-Compiler's curated benchmark builders while
-    still flowing through the normal pyqres DSL/generated Operation path.
-
-    ``param_list`` shape:
-        ``[gate_name: str, qubits: list[int], params: list[float]]``
+    ``param_list`` shape: ``[qubits, multiplier, modulus]`` where ``qubits``
+    is ``[control, *work_register]`` in indices relative to ``reg_list[0]``.
+    Maps directly to QEC-Compiler ``AbstractGate('CMUL_MOD_N')``.
     """
 
     def __init__(self, reg_list=None, param_list=None):
         super().__init__(reg_list=reg_list, param_list=param_list or [])
         self.register = reg_list[0] if reg_list else None
-        self.gate_name = str(self.param_list[0])
-        self.bit_indices = tuple(int(q) for q in self.param_list[1])
-        raw_params = self.param_list[2] if len(self.param_list) > 2 else []
-        self.gate_params = tuple(float(p) for p in raw_params)
+        self.bit_indices = tuple(int(q) for q in self.param_list[0])
+        self.multiplier = float(self.param_list[1])
+        self.modulus = float(self.param_list[2])
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
         raise NotImplementedError(
-            "QECGate is a compiler-only adapter for AbstractCircuit emission; "
-            "it has no PySparQ reference implementation."
+            "CMUL_MOD_N has no pyqres-local PySparQ reference implementation yet."
         )
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
         raise NotImplementedError(
-            "QECGate does not define pyqres resource semantics. Use the emitted "
-            "AbstractCircuit/QEC-Compiler pipeline for resource computation."
+            "CMUL_MOD_N resource accounting is owned by QEC-Compiler lowering."
         )
 
     def to_abstract_gates(self, qubit_map):
-        if self.register not in qubit_map:
-            raise ValueError(f"Register {self.register!r} is not allocated for QECGate")
         reg_qubits = qubit_map[self.register]
         qubits = tuple(reg_qubits[index] for index in self.bit_indices)
-        return [_lazy_abstract_gate(self.gate_name, qubits, self.gate_params)]
+        return [_lazy_abstract_gate("CMUL_MOD_N", qubits, (self.multiplier, self.modulus))]

@@ -10,7 +10,7 @@
   impl:
     - for_each:
         var: i
-        items: "range(n_qubits)"
+        items: n_qubits
         body:
           - op: Hadamard
             qregs: [reg]
@@ -23,9 +23,14 @@
   params:
     - {name: state_value, type: int}
   impl:
-    - python: |
-        bin_str = bin(state_value)[2:][::-1]
-        for i, bit in enumerate(bin_str):
-            if bit == '1':
-                self.program_list.append(OperationRegistry.get_class('X')(reg_list=[self.reg]))
+    - for_each:
+        var: i
+        items: {type: expr, value: "range(state_value.bit_length())"}
+        body:
+          - if:
+              condition: "((state_value >> i) & 1) == 1"
+              body:
+                - op: X
+                  qregs: [reg]
+                  params: [$i]
   self_conjugate: true

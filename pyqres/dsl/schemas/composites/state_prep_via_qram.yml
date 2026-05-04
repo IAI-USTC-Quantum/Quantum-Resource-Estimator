@@ -10,7 +10,7 @@
   impl:
     - for_each:
         var: i
-        items: "range(n_qubits)"
+        items: n_qubits
         body:
           - op: Hadamard
             qregs: [reg]

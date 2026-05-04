@@ -1,68 +1,512 @@
-# QEC-Compiler example mirrors
+# QEC-Compiler example algorithms.
 #
-# These YAML composites reproduce the gate-level AbstractCircuit output
-# of the corresponding QEC-Compiler benchmark builders.
-#
-# Purpose: verify that pyqres YAML DSL -> generated Python -> AbstractCircuit
-# produces the same gate sequence as the QEC-Compiler reference builders.
-#
-# Limitations:
-#   - Qubit indices depend on register allocation order (single-qubit registers
-#     allocated in order yield indices 0, 1, 2, ... matching QEC-Compiler).
-#   - Measurements and metadata are NOT compared.
-#   - These are compiler-only wrappers; PySparQ simulation is not expected.
+# These composites express the algorithm structure directly in YAML and lower
+# through named primitives that QEC-Compiler's AbstractCircuit understands.
 
-# GHZ state: H(0) -> CNOT(0,1) -> CNOT(1,2)
-# Mirrors: qec_compiler.cases.benchmark_state_prep.build_ghz_circuit(3)
 - name: QECExampleGHZ
-  description: "GHZ state preparation — mirrors QEC-Compiler build_ghz_circuit"
+  description: "GHZ state preparation"
   qregs:
-    - {name: q0, type: General, desc: "Qubit 0 (entangled)"}
-    - {name: q1, type: General, desc: "Qubit 1 (entangled)"}
-    - {name: q2, type: General, desc: "Qubit 2 (entangled)"}
+    - {name: q, type: General}
   params:
-    - {name: n, type: int, desc: "Number of qubits (must match register count)"}
+    - {name: n, type: int}
   impl:
-    - op: Hadamard
-      qregs: [q0]
-    - op: CNOT
-      qregs: [q0, q1]
-      params: [0, 0]
-    - op: CNOT
-      qregs: [q1, q2]
-      params: [0, 0]
+    - op: H
+      qregs: [q]
+      params: [0]
+    - for_each:
+        var: i
+        items: {type: expr, value: "range(n - 1)"}
+        body:
+          - op: CNOT
+            qregs: [q, q]
+            params: [{type: expr, value: "i"}, {type: expr, value: "i + 1"}]
 
-# Bernstein-Vazirani with secret=0b101 (n=3)
-# Mirrors: qec_compiler.cases.benchmark_bv.build_bv_circuit(3, secret=5)
-- name: QECExampleBV
-  description: "Bernstein-Vazirani (secret=0b101) — mirrors QEC-Compiler build_bv_circuit"
+- name: QECExampleW
+  description: "W-state preparation"
   qregs:
-    - {name: q0, type: General, desc: "Input qubit 0"}
-    - {name: q1, type: General, desc: "Input qubit 1"}
-    - {name: q2, type: General, desc: "Input qubit 2"}
-    - {name: anc, type: General, desc: "Ancilla qubit"}
+    - {name: q, type: General}
   params:
-    - {name: n, type: int, desc: "Number of input qubits"}
+    - {name: n, type: int}
   impl:
-    # H on all input qubits
-    - op: Hadamard
-      qregs: [q0]
-    - op: Hadamard
-      qregs: [q1]
-    - op: Hadamard
-      qregs: [q2]
-    # Oracle: CNOT from qubit i to ancilla where secret bit = 1
-    # secret = 0b101 -> bits [1, 0, 1] -> CNOT(q0, anc), CNOT(q2, anc)
-    - op: CNOT
-      qregs: [q0, anc]
-      params: [0, 0]
-    - op: CNOT
-      qregs: [q2, anc]
-      params: [0, 0]
-    # H on all input qubits
-    - op: Hadamard
-      qregs: [q0]
-    - op: Hadamard
-      qregs: [q1]
-    - op: Hadamard
-      qregs: [q2]
+    - for_each:
+        var: i
+        items: n
+        body:
+          - if:
+              condition: "i == n - 1"
+              body:
+                - op: X
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}]
+              else:
+                - op: RY
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "i"}
+                    - {type: expr, value: "2 * math.asin(math.sqrt((n - i - 1) / (n - i)))"}
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "i + 1"}]
+                - op: RY
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "i + 1"}
+                    - {type: expr, value: "-2 * math.asin(math.sqrt((n - i - 1) / (n - i)))"}
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "i + 1"}]
+                - op: X
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}]
+
+- name: QECExampleBV
+  description: "Bernstein-Vazirani oracle algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n, type: int}
+    - {name: secret, type: int}
+  impl:
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+    - for_each:
+        var: i
+        items: n
+        body:
+          - if:
+              condition: "((secret >> i) & 1) == 1"
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "n"}]
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+
+- name: QECExampleDJ
+  description: "Deutsch-Jozsa benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n, type: int}
+    - {name: balanced, type: bool}
+  impl:
+    - op: X
+      qregs: [q]
+      params: [{type: expr, value: "n"}]
+    - op: H
+      qregs: [q]
+      params: [{type: expr, value: "n"}]
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+    - if:
+        condition: "balanced"
+        body:
+          - for_each:
+              var: i
+              items: n
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "n"}]
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+
+- name: QECExampleGrover
+  description: "Grover search benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n, type: int}
+    - {name: marked_states, type: array}
+    - {name: iterations, type: int}
+  impl:
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+    - loop:
+        iterations: iterations
+        body:
+          - for_each:
+              var: target
+              items: marked_states
+              body:
+                - for_each:
+                    var: i
+                    items: n
+                    body:
+                      - if:
+                          condition: "((int(target) >> i) & 1) == 1"
+                          body:
+                            - op: X
+                              qregs: [q]
+                              params: [{type: expr, value: "i"}]
+          - for_each:
+              var: i
+              items: {type: expr, value: "range(n - 1)"}
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "i + 1"}]
+          - op: X
+            qregs: [q]
+            params: [{type: expr, value: "n - 1"}]
+          - for_each:
+              var: i
+              items: n
+              body:
+                - op: X
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}]
+          - for_each:
+              var: i
+              items: n
+              body:
+                - op: H
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}]
+
+- name: QECExampleQFT
+  description: "Quantum Fourier Transform benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n, type: int}
+  impl:
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+          - for_each:
+              var: j
+              items: {type: expr, value: "range(i + 1, n)"}
+              body:
+                - op: CPHASE
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "i"}
+                    - {type: expr, value: "j"}
+                    - {type: expr, value: "math.pi / (1 << (j - i))"}
+    - for_each:
+        var: i
+        items: {type: expr, value: "range(n // 2)"}
+        body:
+          - op: SWAP
+            qregs: [q]
+            params: [{type: expr, value: "i"}, {type: expr, value: "n - 1 - i"}]
+
+- name: QECExampleQPE
+  description: "Quantum Phase Estimation benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n_counting, type: int}
+    - {name: n_system, type: int}
+    - {name: unitary_eigenvalue, type: float}
+  computed_params:
+    - {name: phase, formula: "2 * math.pi * unitary_eigenvalue"}
+  impl:
+    - for_each:
+        var: i
+        items: n_counting
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+    - for_each:
+        var: i
+        items: n_counting
+        body:
+          - for_each:
+              var: s
+              items: n_system
+              body:
+                - op: CPHASE
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "i"}
+                    - {type: expr, value: "n_counting + s"}
+                    - {type: expr, value: "phase * (1 << i)"}
+    - for_each:
+        var: i
+        items: {type: expr, value: "range(n_counting // 2)"}
+        body:
+          - op: SWAP
+            qregs: [q]
+            params: [{type: expr, value: "i"}, {type: expr, value: "n_counting - 1 - i"}]
+    - for_each:
+        var: i
+        items: {type: expr, value: "range(n_counting - 1, -1, -1)"}
+        body:
+          - for_each:
+              var: j
+              items: {type: expr, value: "range(n_counting - 1, i, -1)"}
+              body:
+                - op: CPHASE
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "i"}
+                    - {type: expr, value: "j"}
+                    - {type: expr, value: "-math.pi / (1 << (j - i))"}
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+
+- name: QECExampleQAOA
+  description: "QAOA MaxCut benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n_vertices, type: int}
+    - {name: edges, type: array}
+    - {name: p, type: int}
+    - {name: gamma, type: float}
+    - {name: beta, type: float}
+  computed_params:
+    - {name: gamma_step, formula: "gamma / p"}
+    - {name: beta_step, formula: "beta / p"}
+  impl:
+    - for_each:
+        var: i
+        items: n_vertices
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "i"}]
+    - loop:
+        iterations: p
+        body:
+          - for_each:
+              var: edge
+              items: edges
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "edge[0]"}, {type: expr, value: "edge[1]"}]
+                - op: RZ
+                  qregs: [q]
+                  params: [{type: expr, value: "edge[1]"}, {type: expr, value: "gamma_step"}]
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "edge[0]"}, {type: expr, value: "edge[1]"}]
+          - for_each:
+              var: i
+              items: n_vertices
+              body:
+                - op: RX
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "beta_step"}]
+
+- name: QECExampleVQE
+  description: "Hardware-efficient VQE ansatz benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n_qubits, type: int}
+    - {name: layers, type: int}
+    - {name: ring_entanglement, type: bool}
+  impl:
+    - for_each:
+        var: layer
+        items: layers
+        body:
+          - for_each:
+              var: qubit
+              items: n_qubits
+              body:
+                - op: RY
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "qubit"}
+                    - {type: expr, value: "math.pi * (layer + 1) * (qubit + 1) / (2 * (n_qubits + layers))"}
+                - op: RZ
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "qubit"}
+                    - {type: expr, value: "math.pi * (layer + 1) * (qubit + 2) / (4 * (n_qubits + layers))"}
+          - for_each:
+              var: control
+              items: {type: expr, value: "range(n_qubits - 1)"}
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "control"}, {type: expr, value: "control + 1"}]
+          - if:
+              condition: "ring_entanglement and n_qubits > 2"
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "n_qubits - 1"}, 0]
+
+- name: QECExampleIsing
+  description: "Trotterized transverse-field Ising benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: n_spins, type: int}
+    - {name: couplings, type: array}
+    - {name: p_level, type: int}
+    - {name: h_transverse, type: float}
+  computed_params:
+    - {name: dt, formula: "0.1"}
+  impl:
+    - loop:
+        iterations: p_level
+        body:
+          - for_each:
+              var: item
+              items: {type: expr, value: "enumerate(couplings)"}
+              body:
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "item[0]"}, {type: expr, value: "item[0] + 1"}]
+                - op: RZ
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "item[0] + 1"}
+                    - {type: expr, value: "-float(item[1]) * dt"}
+                - op: CNOT
+                  qregs: [q, q]
+                  params: [{type: expr, value: "item[0]"}, {type: expr, value: "item[0] + 1"}]
+          - for_each:
+              var: i
+              items: n_spins
+              body:
+                - op: RX
+                  qregs: [q]
+                  params: [{type: expr, value: "i"}, {type: expr, value: "-h_transverse * dt"}]
+
+- name: QECExampleSwapTest
+  description: "SWAP-test benchmark algorithm"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: total_qubits, type: int}
+  computed_params:
+    - {name: n_data, formula: "(total_qubits - 1) // 2"}
+  impl:
+    - op: H
+      qregs: [q]
+      params: [0]
+    - for_each:
+        var: offset
+        items: n_data
+        body:
+          - op: RY
+            qregs: [q]
+            params:
+              - {type: expr, value: "1 + offset"}
+              - {type: expr, value: "math.pi * (offset + 1) / (2 * (n_data + 1))"}
+    - for_each:
+        var: offset
+        items: n_data
+        body:
+          - op: RZ
+            qregs: [q]
+            params:
+              - {type: expr, value: "1 + n_data + offset"}
+              - {type: expr, value: "math.pi * (offset + 2) / (3 * (n_data + 1))"}
+          - if:
+              condition: "offset % 2 == 0"
+              body:
+                - op: X
+                  qregs: [q]
+                  params: [{type: expr, value: "1 + n_data + offset"}]
+    - for_each:
+        var: offset
+        items: n_data
+        body:
+          - op: CNOT
+            qregs: [q, q]
+            params: [{type: expr, value: "1 + n_data + offset"}, {type: expr, value: "1 + offset"}]
+          - op: CCX
+            qregs: [q]
+            params: [0, {type: expr, value: "1 + offset"}, {type: expr, value: "1 + n_data + offset"}]
+          - op: CNOT
+            qregs: [q, q]
+            params: [{type: expr, value: "1 + n_data + offset"}, {type: expr, value: "1 + offset"}]
+    - op: H
+      qregs: [q]
+      params: [0]
+
+- name: QECExampleSmallShor
+  description: "Small Shor order-finding fixture for N=15 or N=21"
+  qregs:
+    - {name: q, type: General}
+  params:
+    - {name: modulus, type: int}
+    - {name: base, type: int}
+  computed_params:
+    - {name: counting_bits, formula: "4 if modulus == 15 else 6"}
+    - {name: work_bits, formula: "4 if modulus == 15 else 5"}
+  impl:
+    - op: X
+      qregs: [q]
+      params: [{type: expr, value: "counting_bits"}]
+    - for_each:
+        var: control
+        items: counting_bits
+        body:
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "control"}]
+    - for_each:
+        var: control
+        items: counting_bits
+        body:
+          - op: CMUL_MOD_N
+            qregs: [q]
+            params:
+              - {type: expr, value: "[control] + list(range(counting_bits, counting_bits + work_bits))"}
+              - {type: expr, value: "float(pow(base, 1 << control, modulus))"}
+              - {type: expr, value: "float(modulus)"}
+    - for_each:
+        var: left
+        items: {type: expr, value: "range(counting_bits // 2)"}
+        body:
+          - op: SWAP
+            qregs: [q]
+            params: [{type: expr, value: "left"}, {type: expr, value: "counting_bits - 1 - left"}]
+    - for_each:
+        var: target
+        items: counting_bits
+        body:
+          - for_each:
+              var: control
+              items: {type: expr, value: "range(target)"}
+              body:
+                - op: CPHASE
+                  qregs: [q]
+                  params:
+                    - {type: expr, value: "control"}
+                    - {type: expr, value: "target"}
+                    - {type: expr, value: "-math.pi / (1 << (target - control))"}
+          - op: H
+            qregs: [q]
+            params: [{type: expr, value: "target"}]

@@ -156,10 +156,20 @@ Example composite:
   params:
     - {name: n, type: int}
   impl:
-    - python: |
-        from ..algorithms.qec_examples import build_qec_qft
-    - python: |
-        build_qec_qft(self.program_list, self.q, self.n)
+    - for_each:
+        var: i
+        items: n
+        body:
+          - op: H
+            qregs: [q]
+            params: [$i]
+          - for_each:
+              var: j
+              items: {type: expr, value: "range(i + 1, n)"}
+              body:
+                - op: CPHASE
+                  qregs: [q]
+                  params: [$i, $j, {type: expr, value: "math.pi / (1 << (j - i))"}]
 ```
 
 The generated class can lower to QEC-Compiler `AbstractCircuit`:
@@ -212,7 +222,7 @@ The first shared primitive contract with QEC-Compiler:
 | `REFLECT` | `REFLECT` | Multi-controlled phase reflection. |
 | `MOD_ADD` | `MOD_ADD`, `MOD_SUB`, `CMOD_ADD`, `CMOD_SUB` | Clean modular add/subtract on the valid subspace. |
 | `MOD_MUL` | `MOD_MUL`, `CMOD_MUL` | Clean modular multiply; dagger uses `c^-1 mod N`. |
-| `QECGate` | arbitrary QEC gate name | Compiler-only adapter for YAML benchmark mirrors. |
+| `H`, `Z`, `SWAP`, `CPHASE`, `RX`, `RY`, `RZ`, `CCX`, `CMUL_MOD_N` | same-named QEC gates | Direct `AbstractGate` primitives for QEC-facing algorithms. |
 
 Shor `ExpMod` emits the compatibility gate `CMUL_MOD_N`.
 

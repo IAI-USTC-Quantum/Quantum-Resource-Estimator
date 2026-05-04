@@ -322,7 +322,8 @@ class CodeGenerator:
         """Generate the class body with execute method for complex implementations."""
         impl = defn.get("impl", [])
         params = defn.get("params", [])
-        param_names = [p["name"] for p in params]
+        computed_params = defn.get("computed_params", [])
+        param_names = [p["name"] for p in params] + [p["name"] for p in computed_params]
 
         lines = []
 
@@ -370,11 +371,7 @@ class CodeGenerator:
         if "loop" in call:
             iterations = call["loop"]["iterations"]
             body = call["loop"]["body"]
-            # Handle numeric iterations directly (no self. prefix for numbers)
-            if isinstance(iterations, (int, float)):
-                iter_expr = str(iterations)
-            else:
-                iter_expr = f"self.{iterations}"
+            iter_expr = self._resolve_loop_expr(iterations, param_names, local_vars)
             lines.append(f"{prefix}for i in range({iter_expr}):")
             for item in body:
                 self._add_impl_lines(lines, item, indent, depth + 1, param_names, local_vars)
@@ -383,11 +380,7 @@ class CodeGenerator:
         if "loop_reverse" in call:
             iterations = call["loop_reverse"]["iterations"]
             body = call["loop_reverse"]["body"]
-            # Handle numeric iterations directly (no self. prefix for numbers)
-            if isinstance(iterations, (int, float)):
-                iter_expr = str(iterations)
-            else:
-                iter_expr = f"self.{iterations}"
+            iter_expr = self._resolve_loop_expr(iterations, param_names, local_vars)
             lines.append(f"{prefix}for i in range({iter_expr} - 1, -1, -1):")
             for item in body:
                 self._add_impl_lines(lines, item, indent, depth + 1, param_names, local_vars)
@@ -399,19 +392,7 @@ class CodeGenerator:
             items = for_each_def["items"]
             body = for_each_def["body"]
 
-            # Resolve items expression
-            if isinstance(items, list):
-                # Literal list: iterate directly
-                items_expr = repr(items)
-            elif isinstance(items, str):
-                # Parameter reference: array types iterate directly, int/float need range()
-                ptype = self._param_type_map.get(items, "int")
-                if ptype in ("array", "list"):
-                    items_expr = f"self.{items}"
-                else:
-                    items_expr = f"range(self.{items})"
-            else:
-                items_expr = str(items)
+            items_expr = self._resolve_for_each_items_expr(items, param_names, local_vars)
 
             lines.append(f"{prefix}for {var_name} in {items_expr}:")
 
@@ -425,7 +406,7 @@ class CodeGenerator:
 
         if "if" in call:
             if_def = call["if"]
-            condition = if_def["condition"]
+            condition = self._resolve_expr(if_def["condition"], param_names, local_vars)
             body = if_def["body"]
 
             lines.append(f"{prefix}if {condition}:")
@@ -435,7 +416,7 @@ class CodeGenerator:
             # Handle elif
             if "elif" in if_def:
                 for elif_def in if_def["elif"]:
-                    elif_condition = elif_def["condition"]
+                    elif_condition = self._resolve_expr(elif_def["condition"], param_names, local_vars)
                     elif_body = elif_def["body"]
                     lines.append(f"{prefix}elif {elif_condition}:")
                     for item in elif_body:
@@ -629,18 +610,7 @@ class CodeGenerator:
         items = for_each_def.get("items", [])
         body = for_each_def.get("body", [])
 
-        # Resolve items expression
-        if isinstance(items, list):
-            items_expr = repr(items)
-        elif isinstance(items, str):
-            # Parameter reference: array types iterate directly, int/float need range()
-            ptype = self._param_type_map.get(items, "int")
-            if ptype in ("array", "list"):
-                items_expr = f"self.{items}"
-            else:
-                items_expr = f"range(self.{items})"
-        else:
-            items_expr = str(items)
+        items_expr = self._resolve_for_each_items_expr(items, local_vars=local_vars)
 
         lines = []
         lines.append(f"# For-each loop over {items_expr}")
@@ -737,10 +707,60 @@ class CodeGenerator:
                 if param_names and ref_name in param_names:
                     return f"self.{ref_name}"
                 return ref_name
+            elif ptype == "literal":
+                return repr(ref.get("value"))
+            elif ptype == "expr":
+                return self._resolve_expr(str(ref.get("value", "")), param_names, local_vars)
             else:
                 return str(ref)
         else:
             return str(ref)
+
+    def _resolve_loop_expr(self, expr: Any, param_names: List[str] = None,
+                           local_vars: Dict[str, str] = None) -> str:
+        """Resolve a loop iteration expression for range(...)."""
+        if isinstance(expr, (int, float)):
+            return str(expr)
+        if isinstance(expr, dict) and expr.get("type") == "expr":
+            return self._resolve_expr(str(expr.get("value", "")), param_names, local_vars)
+        if isinstance(expr, str):
+            if param_names and expr in param_names:
+                return f"self.{expr}"
+            return self._resolve_expr(expr, param_names, local_vars)
+        return str(expr)
+
+    def _resolve_for_each_items_expr(self, items: Any, param_names: List[str] = None,
+                                     local_vars: Dict[str, str] = None) -> str:
+        """Resolve a for_each items source expression."""
+        if isinstance(items, list):
+            return repr(items)
+        if isinstance(items, dict):
+            ptype = items.get("type")
+            if ptype == "literal":
+                return repr(items.get("value"))
+            if ptype == "expr":
+                return self._resolve_expr(str(items.get("value", "")), param_names, local_vars)
+        if isinstance(items, str):
+            ptype = self._param_type_map.get(items, "int")
+            if ptype in ("array", "list"):
+                return f"self.{items}"
+            return f"range(self.{items})"
+        return str(items)
+
+    def _resolve_expr(self, expr: str, param_names: List[str] = None,
+                      local_vars: Dict[str, str] = None) -> str:
+        """Resolve a YAML expression into generated Python code."""
+        import re as _re
+
+        result = expr
+        local_names = set(local_vars or {})
+        if param_names:
+            for pname in param_names:
+                if pname in local_names:
+                    continue
+                pattern = r'\b' + _re.escape(pname) + r'\b'
+                result = _re.sub(pattern, f"self.{pname}", result)
+        return result
 
     def _generate_controller_chain(self, controllers: Dict[str, Any]) -> str:
         """Generate controller method chain."""

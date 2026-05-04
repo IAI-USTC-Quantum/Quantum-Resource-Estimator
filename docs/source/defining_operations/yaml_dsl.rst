@@ -155,11 +155,11 @@ QEC-Compiler examples YAML mirror
 
    pyqres/dsl/schemas/composites/qec_examples.yml
 
-这些 YAML 类通过 compiler-only ``QECGate`` adapter 精确发出 QEC gate：
+这些 YAML 类通过显式 QEC IR primitives 精确发出 QEC gate：
 
 .. code-block:: python
 
-   QECGate(reg_list=["q"], param_list=["CPHASE", [0, 1], [theta]])
+   CPHASE(reg_list=["q"], param_list=[0, 1, theta])
 
 示例：QFT mirror
 
@@ -171,10 +171,20 @@ QEC-Compiler examples YAML mirror
      params:
        - {name: n, type: int}
      impl:
-       - python: |
-           from ..algorithms.qec_examples import build_qec_qft
-       - python: |
-           build_qec_qft(self.program_list, self.q, self.n)
+       - for_each:
+           var: i
+           items: n
+           body:
+             - op: H
+               qregs: [q]
+               params: [$i]
+             - for_each:
+                 var: j
+                 items: {type: expr, value: "range(i + 1, n)"}
+                 body:
+                   - op: CPHASE
+                     qregs: [q]
+                     params: [$i, $j, {type: expr, value: "math.pi / (1 << (j - i))"}]
 
 使用：
 
@@ -189,8 +199,8 @@ QEC-Compiler examples YAML mirror
 
 当前 mirror 覆盖 GHZ、W、BV、DJ、Grover、QFT、QPE、QAOA、VQE、Ising、SWAP-test、small Shor。
 
-注意：``QECGate`` 没有 PySparQ reference，也没有 pyqres T-count。它只用于
-``YAML -> generated Python -> AbstractCircuit`` 的 gate-level parity。
+注意：部分 QEC IR primitives 只定义 ``AbstractCircuit`` lowering；完整资源统计由
+QEC-Compiler 后续 lowering pipeline 负责。
 
 文件组织建议
 ------------
