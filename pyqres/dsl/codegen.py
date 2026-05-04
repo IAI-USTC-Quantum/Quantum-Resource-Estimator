@@ -55,6 +55,13 @@ class CodeGenerator:
         # Store param type map for for_each range() vs direct-iteration decisions
         self._param_type_map = {p["name"]: p.get("type", "int") for p in defn.get("params", [])}
 
+        # Store declared operation params for symbol lookup
+        # When op name matches a declared 'type: operation' param, generate self.{name}() instead of OperationRegistry.get_class()
+        self._declared_op_params = {
+            p["name"] for p in defn.get("params", [])
+            if isinstance(p, dict) and p.get("type") == "operation"
+        }
+
         imports = self._generate_imports(base_class, defn)
 
         # Extract dependencies from impl
@@ -447,7 +454,12 @@ class CodeGenerator:
             params_str = ", ".join(resolved_params)
             args.append(f"param_list=[{params_str}]")
 
-        base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
+        # Symbol lookup: if op_name is a declared 'type: operation' param, use self.{name}()
+        # Otherwise, use OperationRegistry.get_class() for registered operations
+        if self._declared_op_params and op_name in self._declared_op_params:
+            base = f'self.{op_name}({", ".join(args)})'
+        else:
+            base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
 
         if call.get("dagger"):
             base += ".dagger()"
@@ -505,7 +517,12 @@ class CodeGenerator:
         if temp_out:
             args.append(f"# temp_out: {temp_out}")
 
-        base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
+        # Symbol lookup: if op_name is a declared 'type: operation' param, use self.{name}()
+        # Otherwise, use OperationRegistry.get_class() for registered operations
+        if self._declared_op_params and op_name in self._declared_op_params:
+            base = f'self.{op_name}({", ".join(args)})'
+        else:
+            base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
 
         # dagger
         if call.get("dagger"):

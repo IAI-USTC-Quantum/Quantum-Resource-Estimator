@@ -249,10 +249,16 @@ class SchemaValidator:
                 self.errors.append(ValidationError(call_path, "Missing 'op'"))
                 continue
 
-            # Check if op is known
+            # Check if op is known (allow declared operation params)
             op_name = call["op"]
+            declared_op_params = {
+                p["name"] for p in parent_defn.get("params", [])
+                if isinstance(p, dict) and p.get("type") == "operation"
+            }
             if known_operations is not None:
-                if op_name not in known_operations and op_name not in defined_in_batch:
+                if (op_name not in known_operations
+                        and op_name not in defined_in_batch
+                        and op_name not in declared_op_params):
                     self.errors.append(ValidationError(
                         call_path,
                         f"References unknown operation '{op_name}'"

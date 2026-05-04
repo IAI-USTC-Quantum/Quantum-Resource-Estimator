@@ -4,39 +4,24 @@
 #
 # Full algorithm:
 #   1. Initialize: X|0⟩ (prepare H₀ eigenstate)
-#   2. State preparation of |b⟩ (via submodule)
+#   2. State preparation of |b⟩ (via encode_b operation param)
 #   3. Discrete adiabatic evolution: for step = 0..n_steps-1:
 #        s = step / (n_steps - 1)
 #        f_s = compute_fs(s, kappa, p)    — interpolation parameter
 #        WalkS(f_s) = BlockEncoding_Hs(f_s) → Reflection → GlobalPhase
 #   4. (Optional) Dolph-Chebyshev filtering
 #
-# WalkS forward circuit (BlockEncoding_Hs):
-#   H(anc_3)
-#   enc_b† → X(anc_1,0) → Ref(main_reg,True|anc_1,anc_3,anc_4) → X(anc_1,0) → enc_b
-#   X(anc_4,0) → Rot(anc_2,R_s|anc_4) → X(anc_4,0) → H(anc_2|anc_4)
-#   enc_A(anc_1,anc_2) → X(anc_1,0|anc_2) → Ref(anc_2,True|anc_1) → enc_A†(anc_1,anc_2)
-#   X(anc_4,0) → H(anc_2|anc_4) → X(anc_4,0) → Rot(anc_2,R_s|anc_4)
-#   enc_b† → X(anc_1,0) → Ref(main_reg,True|anc_1,anc_3,anc_4) → X(anc_1,0) → enc_b
-#   H(anc_3)
-#   → Reflection([anc_UA, anc_2, anc_3], inverse=False)
-#   → GlobalPhase(1j)
-#
-# WalkS dagger (reverse sequence):
-#   GlobalPhase(-1j)
-#   Reflection([anc_UA, anc_2, anc_3], inverse=False)
-#   [reverse of BlockEncoding_Hs with flipped anc_4 conditions]
-#
-# R_s = 1/√((1-f_s)²+f_s²) × [[1-f_s, f_s], [f_s, f_s-1]]
-#
 # Time complexity: O(κ log(κ/ε)) — optimal for quantum linear solving.
 #
 # NOTE: enc_A (block encoding of A) and enc_b (state prep of |b⟩) require
 # QRAM/sparse matrix data (pre-processing, not in YAML scope).
-# The WalkS Python class (WalkS_Primitive) handles the circuit and dag.
 #
 # Reference: Lin-Tong, PRX Quantum 3, 040303 (2022)
-# PySparQ implementation: pyqres/algorithms/qda_solver.py
+# WalkS circuit: pyqres/dsl/schemas/composites/walks.yml
+
+# Import WalkS composite from walks.yml
+imports:
+  - walks.yml
 
 name: QDALinearSolver
 description: "QDA quantum linear system solver using discrete adiabatic evolution"
@@ -58,9 +43,11 @@ computed_params:
   - name: n_steps
     formula: "int(math.ceil(math.log(kappa / epsilon)))"
 impl:
-  # ── 0. Module-level imports for python: blocks ───────────────────────────
+  # ── 0. Helper function for interpolation parameter ───────────────────────
   - python: |
-      from ..algorithms.qda_solver import compute_fs, WalkS_Primitive
+      def compute_fs(s, kappa, p):
+          """Compute f_s = p * (1 - s) + (1-p) * s"""
+          return p * (1 - s) + (1 - p) * s
 
   # ── 1. Initialize to H₀ eigenstate: X|0⟩ ───────────────────────────────
   - comment: "X on first qubit of main_reg to prepare H₀ eigenstate |1⟩"
@@ -69,11 +56,10 @@ impl:
     params: [0]
 
   # ── 2. State preparation of |b⟩ ─────────────────────────────────────────
+  # Uses symbol lookup: op: encode_b generates self.encode_b(...)
   - comment: "State preparation |0⟩ → |b⟩ — via encode_b (operation param)"
-    python: |
-      if self.encode_b:
-          self.program_list.append(
-              self.encode_b(reg_list=[self.main_reg], param_list=[self.epsilon]))
+    op: encode_b
+    qregs: [main_reg]
 
   # ── 3. Discrete adiabatic evolution loop ────────────────────────────────
   # Evolves from H₀ = σ_z ⊗ |0⟩⟨0| to H₁ = A ⊗ |b⟩⟨b| in n_steps.
@@ -81,17 +67,14 @@ impl:
     loop:
       iterations: n_steps
       body:
-        - comment: "WalkS = BlockEncoding_Hs(f_s) → Reflection → GlobalPhase"
-          python: |
+        - python: |
             s = i / max(1, self.n_steps - 1) if self.n_steps > 1 else 1.0
             fs = compute_fs(s, self.kappa, self.p)
-            walk_ops = [op for op in [self.encode_A, self.encode_b] if op]
-            self.program_list.append(
-                WalkS_Primitive(
-                    reg_list=[self.main_reg, self.anc_UA, self.anc_1,
-                              self.anc_2, self.anc_3, self.anc_4],
-                    param_list=[fs],
-                    submodules=walk_ops))
+
+        - comment: "WalkS = BlockEncoding_Hs(f_s) → Reflection → GlobalPhase"
+          op: WalkS
+          qregs: [main_reg, anc_UA, anc_1, anc_2, anc_3, anc_4]
+          params: [fs]
 
         - comment: "WalkS dagger: reverse sequence with negated global phase"
           python: |
