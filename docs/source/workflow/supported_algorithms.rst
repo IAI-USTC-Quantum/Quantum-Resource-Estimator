@@ -64,7 +64,7 @@ pyqres 中算法分为三类：
 
 QEC-Compiler 的 curated examples 原本直接构造 ``AbstractCircuit``。为了验证
 “pyqres YAML DSL -> generated Python -> AbstractCircuit”这一步，pyqres 提供一组
-``QECExample*`` YAML mirror。它们通过 compiler-only ``QECGate`` adapter 发出与
+``QECExample*`` YAML mirror。它们通过显式 QEC IR primitives 发出与
 QEC-Compiler builder 完全相同的 gate name、qubit order 和 params。
 
 这条路径的目的很明确：
@@ -78,4 +78,4 @@ QEC-Compiler builder 完全相同的 gate name、qubit order 和 params。
 
 * 当前 parity 测试比较 ``num_qubits``、``gates``、``qubits``、``params``。
 * pyqres QEC lowering 目前不表达 QEC-Compiler examples 的 measurements 和 metadata。
-* ``QECGate`` 没有 PySparQ reference，也不提供 pyqres T-count；它只用于编译器 parity。
+* 部分 QEC IR primitives 只定义 ``AbstractCircuit`` lowering；资源统计交给 QEC-Compiler。

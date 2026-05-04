@@ -8,7 +8,17 @@ from .GroverSearch import GroverSearch
 from .QuantumPhaseEstimation import QuantumPhaseEstimation
 from .QDALinearSolver import QDALinearSolver
 from .QECExampleGHZ import QECExampleGHZ
+from .QECExampleW import QECExampleW
 from .QECExampleBV import QECExampleBV
+from .QECExampleDJ import QECExampleDJ
+from .QECExampleGrover import QECExampleGrover
+from .QECExampleQFT import QECExampleQFT
+from .QECExampleQPE import QECExampleQPE
+from .QECExampleQAOA import QECExampleQAOA
+from .QECExampleVQE import QECExampleVQE
+from .QECExampleIsing import QECExampleIsing
+from .QECExampleSwapTest import QECExampleSwapTest
+from .QECExampleSmallShor import QECExampleSmallShor
 from .QuantumBinarySearch import QuantumBinarySearch
 from .QuantumWalkSearch import QuantumWalkSearch
 from .QuantumWalkStep import QuantumWalkStep
@@ -24,7 +34,17 @@ __all__ = [
     "QuantumPhaseEstimation",
     "QDALinearSolver",
     "QECExampleGHZ",
+    "QECExampleW",
     "QECExampleBV",
+    "QECExampleDJ",
+    "QECExampleGrover",
+    "QECExampleQFT",
+    "QECExampleQPE",
+    "QECExampleQAOA",
+    "QECExampleVQE",
+    "QECExampleIsing",
+    "QECExampleSwapTest",
+    "QECExampleSmallShor",
     "QuantumBinarySearch",
     "QuantumWalkSearch",
     "QuantumWalkStep",

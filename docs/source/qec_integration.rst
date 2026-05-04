@@ -89,22 +89,20 @@ Register management
 by the lowering visitor.  They modify the ``QubitAllocator`` to track which
 qubit indices belong to which named register, but emit no QEC gates.
 
-QECGate (compiler-only primitive)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+QEC IR primitives
+^^^^^^^^^^^^^^^^^
 
-``QECGate`` is a compiler-only primitive that passes pre-defined gate
-definitions directly to the QEC layer.  It raises ``NotImplementedError``
-for simulation methods (``pyqsparse_object()``, ``t_count()``).
+QEC-facing YAML programs use named primitives that lower to QEC-Compiler
+``AbstractGate`` objects: ``H``, ``Z``, ``SWAP``, ``CPHASE``, ``RX``, ``RY``,
+``RZ``, ``CCX``, ``CMUL_MOD_N``, plus existing pyqres primitives such as
+``X``, ``Y``, ``CNOT``, ``ADD``, ``MOD_ADD``, and ``MOD_MUL``.
 
-Usage::
+Example::
 
-    from pyqres.primitives import QECGate
+    from pyqres.primitives import H, CPHASE
 
-    gate_defs = [
-        {"name": "H", "qubits": (0,)},
-        {"name": "CNOT", "qubits": (0, 1)},
-    ]
-    op = QECGate(reg_list=["q"], param_list=[gate_defs])
+    h = H(reg_list=["q"], param_list=[0])
+    phase = CPHASE(reg_list=["q"], param_list=[0, 1, 0.125])
 
 End-to-End Example: GHZ to QEOL JSON
 -------------------------------------
@@ -117,14 +115,10 @@ End-to-End Example: GHZ to QEOL JSON
    from qec_compiler.compiler import QECCompiler
    import json
 
-   # Declare registers
    meta = RegisterMetadata.get_register_metadata()
-   meta.declare_register("q0", 1)
-   meta.declare_register("q1", 1)
-   meta.declare_register("q2", 1)
+   meta.declare_register("q", 3)
 
-   # Instantiate and lower
-   op = QECExampleGHZ(reg_list=["q0", "q1", "q2"], param_list=[3])
+   op = QECExampleGHZ(reg_list=["q"], param_list=[3])
    circuit = to_abstract_circuit(op)
 
    # Compile through QEC-Compiler
@@ -141,7 +135,7 @@ containing the surface-code layout, operation schedule, and syndrome channels.
 YAML DSL QEC Examples
 ---------------------
 
-Two YAML composites mirror QEC-Compiler benchmark builders for parity testing:
+YAML composites mirror QEC-Compiler benchmark builders for parity testing:
 
 ``QECExampleGHZ``
     GHZ state: ``H(q0) → CNOT(q0,q1) → CNOT(q1,q2)``
@@ -152,8 +146,7 @@ Two YAML composites mirror QEC-Compiler benchmark builders for parity testing:
     Mirrors ``build_bv_circuit(3, secret=5)``.
 
 These are defined in ``pyqres/dsl/schemas/composites/qec_examples.yml`` and
-compiled to ``pyqres/generated/QECExampleGHZ.py`` and
-``pyqres/generated/QECExampleBV.py``.
+compiled into ``pyqres/generated/QECExample*.py``.
 
 QRAM Status
 -----------

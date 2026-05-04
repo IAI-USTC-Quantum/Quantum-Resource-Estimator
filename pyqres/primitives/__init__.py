@@ -48,9 +48,11 @@ from .measurement import (
 
 from .debug import DebugPrimitive, CheckNan, CheckNormalization
 
-# Intermediate / QEC-compiler layer
-from .intermediate import MCX, ADD, PLUS_ONE, REFLECT, MOD_ADD, MOD_MUL
-from .qec_gate import QECGate
+# Intermediate / QEC-compiler IR layer
+from .intermediate import (
+    H, Z, SWAP, CPHASE, RX, RY, RZ, CCX,
+    MCX, ADD, PLUS_ONE, REFLECT, MOD_ADD, MOD_MUL, CMUL_MOD_N,
+)
 
 __all__ = [
     # Gates
@@ -93,9 +95,8 @@ __all__ = [
     "Prob", "StatePrint",
     # Debug
     "DebugPrimitive", "CheckNan", "CheckNormalization",
-    # Intermediate / QEC-compiler layer
+    # Intermediate / QEC-compiler IR layer
+    "H", "Z", "SWAP", "CPHASE", "RX", "RY", "RZ", "CCX",
     "MCX", "ADD", "PLUS_ONE", "REFLECT",
-    "MOD_ADD", "MOD_MUL",
-    # Compiler-only
-    "QECGate",
+    "MOD_ADD", "MOD_MUL", "CMUL_MOD_N",
 ]

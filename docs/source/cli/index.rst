@@ -58,8 +58,8 @@ show
    pyqres show QECExampleQFT --depth 2
    pyqres show QDALinearSolver --depth 3
 
-``QECExample*`` 类通常通过 Python helper 和 ``QECGate`` 生成 gate sequence，因此 dependency tree
-主要用于确认 YAML class 已经注册。
+``QECExample*`` 类通过 YAML loops/conditions 调用 QEC IR primitives 生成 gate
+sequence，因此 dependency tree 可以显示这些 primitive 依赖。
 
 estimate
 --------
@@ -79,8 +79,8 @@ estimate
 * ``-p, --params``：参数定义，格式为 ``name:value,name:value,...``。
 * ``-m, --metric``：资源指标，支持 ``t_count``、``t_depth``、``toffoli_count``。
 
-注意：``QECGate`` 和 QRAM wrappers 不提供 pyqres resource estimator 语义。
-``QECGate`` 用于 ``AbstractCircuit`` emission；QRAM 当前显式 ``NotImplementedError``。
+注意：部分 QEC IR primitives 只定义 ``AbstractCircuit`` lowering，不提供
+pyqres-local resource estimator 语义；QRAM 当前显式 ``NotImplementedError``。
 
 QEC examples mirror 工作流
 -------------------------

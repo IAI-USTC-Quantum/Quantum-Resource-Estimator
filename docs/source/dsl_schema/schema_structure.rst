@@ -177,31 +177,26 @@ python block
 .. code-block:: yaml
 
    - python: |
-       from ..algorithms.qec_examples import build_qec_qft
-   - python: |
-       build_qec_qft(self.program_list, self.q, self.n)
+       if self.encode_A:
+           self.program_list.append(self.encode_A)
 
 只有 import-only block 会被 codegen 提升到生成文件顶部；非 import 代码会进入 ``_build_execute_method``。
 
-QECGate 参数结构
-----------------
+QEC IR primitive 参数结构
+------------------------
 
-``QECGate`` 是 QEC examples mirror 使用的 compiler-only primitive。
-
-.. code-block:: python
-
-   QECGate(reg_list=["q"], param_list=[gate_name, qubits, params])
-
-例如：
+QEC examples mirror 使用显式 primitive，而不是任意 gate adapter。
 
 .. code-block:: python
 
-   QECGate(reg_list=["q"], param_list=["RZ", [2], [0.125]])
+   RZ(reg_list=["q"], param_list=[2, 0.125])
+   CPHASE(reg_list=["q"], param_list=[0, 1, 0.25])
 
-会发出：
+分别发出：
 
 .. code-block:: python
 
    AbstractGate(name="RZ", qubits=(2,), params=(0.125,))
+   AbstractGate(name="CPHASE", qubits=(0, 1), params=(0.25,))
 
 它没有 PySparQ reference，也没有 pyqres resource estimator 语义。

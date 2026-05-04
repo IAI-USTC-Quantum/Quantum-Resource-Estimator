@@ -4,22 +4,13 @@ YAML 定义 QEC-Compiler examples
 入口文件
 --------
 
-QEC examples 的 YAML mirror 定义在：
+QEC examples 的 YAML 定义在：
 
 .. code-block:: text
 
    pyqres/dsl/schemas/composites/qec_examples.yml
 
-编译后生成：
-
-.. code-block:: text
-
-   pyqres/generated/QECExampleGHZ.py
-   pyqres/generated/QECExampleW.py
-   pyqres/generated/QECExampleBV.py
-   ...
-
-运行编译：
+编译后生成 ``pyqres/generated/QECExample*.py``。运行：
 
 .. code-block:: bash
 
@@ -27,27 +18,18 @@ QEC examples 的 YAML mirror 定义在：
    .venv/bin/pyqres compile
    .venv/bin/pyqres check
 
-核心机制：QECGate
------------------
+核心机制：QEC IR primitives
+--------------------------
 
-``QECGate`` 是 compiler-only adapter。YAML helper 使用它直接发出 QEC-Compiler
-``AbstractGate``：
+这些 YAML examples 直接调用 QEC-Compiler 认识的 primitive，而不是 import Python
+builder 或通过任意 gate adapter 注入 payload。
 
-.. code-block:: python
+可用的 QEC-facing primitives 包括：
 
-   QECGate(
-       reg_list=["q"],
-       param_list=["CNOT", [0, 1], []],
-   )
+.. code-block:: text
 
-含义是：在寄存器 ``q`` 的 bit 0 和 bit 1 上发出 QEC gate ``CNOT``。
-
-``QECGate`` 的约束：
-
-* 只用于 ``AbstractCircuit`` emission。
-* ``pyqsparse_object()`` 抛 ``NotImplementedError``。
-* ``t_count()`` 抛 ``NotImplementedError``。
-* 不代表 register-level algorithm primitive。
+   H, X, Y, Z, CNOT, SWAP, CPHASE, RX, RY, RZ, CCX
+   ADD, MOD_ADD, MOD_MUL, CMUL_MOD_N, MCX, PLUS_ONE, REFLECT
 
 示例：GHZ
 ---------
@@ -55,16 +37,21 @@ QEC examples 的 YAML mirror 定义在：
 .. code-block:: yaml
 
    - name: QECExampleGHZ
-     description: "YAML mirror of QEC-Compiler GHZ benchmark gates"
      qregs:
        - {name: q, type: General}
      params:
        - {name: n, type: int}
      impl:
-       - python: |
-           from ..algorithms.qec_examples import build_qec_ghz
-       - python: |
-           build_qec_ghz(self.program_list, self.q, self.n)
+       - op: H
+         qregs: [q]
+         params: [0]
+       - for_each:
+           var: i
+           items: {type: expr, value: "range(n - 1)"}
+           body:
+             - op: CNOT
+               qregs: [q, q]
+               params: [$i, {type: expr, value: "i + 1"}]
 
 使用：
 
@@ -91,75 +78,20 @@ QEC examples 的 YAML mirror 定义在：
      params:
        - {name: n, type: int}
      impl:
-       - python: |
-           from ..algorithms.qec_examples import build_qec_qft
-       - python: |
-           build_qec_qft(self.program_list, self.q, self.n)
-
-Python 使用：
-
-.. code-block:: python
-
-   from pyqres.generated import QECExampleQFT
-
-   RegisterMetadata.get_register_metadata().declare_register("q", 4, "General")
-   qft = QECExampleQFT(["q"], [4])
-   circuit = to_abstract_circuit(qft)
-
-QEC-Compiler builder parity 测试逐门比较 ``H``、``CPHASE``、``SWAP`` 的顺序、参数和 qubit order。
-
-示例：QAOA
-----------
-
-.. code-block:: yaml
-
-   - name: QECExampleQAOA
-     qregs:
-       - {name: q, type: General}
-     params:
-       - {name: n_vertices, type: int}
-       - {name: edges, type: array}
-       - {name: p, type: int}
-       - {name: gamma, type: float}
-       - {name: beta, type: float}
-     impl:
-       - python: |
-           from ..algorithms.qec_examples import build_qec_qaoa
-       - python: |
-           build_qec_qaoa(
-               self.program_list, self.q, self.n_vertices, self.edges,
-               self.p, self.gamma, self.beta)
-
-Python 使用：
-
-.. code-block:: python
-
-   import math
-   from pyqres.generated import QECExampleQAOA
-
-   edges = [(0, 1), (1, 2), (2, 3)]
-   RegisterMetadata.get_register_metadata().declare_register("q", 4, "General")
-   op = QECExampleQAOA(["q"], [4, edges, 1, math.pi / 4, math.pi / 8])
-   circuit = to_abstract_circuit(op)
-
-示例：small Shor fixture
------------------------
-
-.. code-block:: yaml
-
-   - name: QECExampleSmallShor
-     qregs:
-       - {name: q, type: General}
-     params:
-       - {name: modulus, type: int}
-       - {name: base, type: int}
-     impl:
-       - python: |
-           from ..algorithms.qec_examples import build_qec_small_shor
-       - python: |
-           build_qec_small_shor(self.program_list, self.q, self.modulus, self.base)
-
-当前支持 ``N=15`` 和 ``N=21``，与 QEC-Compiler stage-5 small Shor fixture 对齐。
+       - for_each:
+           var: i
+           items: n
+           body:
+             - op: H
+               qregs: [q]
+               params: [$i]
+             - for_each:
+                 var: j
+                 items: {type: expr, value: "range(i + 1, n)"}
+                 body:
+                   - op: CPHASE
+                     qregs: [q]
+                     params: [$i, $j, {type: expr, value: "math.pi / (1 << (j - i))"}]
 
 验证命令
 --------

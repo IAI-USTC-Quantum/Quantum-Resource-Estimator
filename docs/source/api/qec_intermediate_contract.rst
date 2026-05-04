@@ -64,29 +64,23 @@ controlled gate 的 qubit 顺序统一为 ``controls...`` 后接原 primitive qu
     modular multiplication 使用 ``CMOD_MUL``。QEC lowering 可以为 work/flag
     分配 clean auxiliary qubit。
 
-QECGate adapter
----------------
+QEC IR primitives
+-----------------
 
-``QECGate`` 是 compiler-only adapter，用于 YAML-defined QEC-Compiler example mirrors。
-它的参数结构是：
+YAML-defined QEC examples 使用一组显式 primitive 对接 QEC-Compiler
+``AbstractCircuit``，而不是通过任意 gate adapter 注入 payload。当前直接对齐的
+primitive 包括：
 
-.. code-block:: python
+``H`` / ``Z`` / ``SWAP`` / ``CPHASE`` / ``RX`` / ``RY`` / ``RZ`` / ``CCX``
+    发出同名 ``AbstractGate``。这些 primitive 使用单个 register 加 register-local
+    qubit index 参数，例如 ``CPHASE(["q"], [0, 1, theta])``。
 
-   QECGate(reg_list=["q"], param_list=[gate_name, qubits, params])
+``CMUL_MOD_N``
+    发出 QEC-Compiler small-Shor/legacy modular exponentiation 使用的
+    ``AbstractGate("CMUL_MOD_N")``。参数为 ``[qubits, multiplier, modulus]``。
 
-例如：
-
-.. code-block:: python
-
-   QECGate(reg_list=["q"], param_list=["CNOT", [0, 1], []])
-
-会发出 QEC-Compiler ``AbstractGate(name="CNOT", qubits=(0, 1), params=())``。
-
-``QECGate`` 不属于算法 semantic primitive：
-
-* ``pyqsparse_object()`` 抛 ``NotImplementedError``。
-* ``t_count()`` 抛 ``NotImplementedError``。
-* 它只用于验证 ``YAML DSL -> generated Python -> AbstractCircuit`` 的 gate-level parity。
+``X`` / ``Y`` / ``CNOT`` 以及 ``ADD`` / ``MOD_ADD`` / ``MOD_MUL``
+    继续作为普通 pyqres primitive 经 ``QECLoweringVisitor`` 降到 QEC IR。
 
 PySparQ reference 状态
 ---------------------
@@ -107,9 +101,9 @@ PySparQ reference 状态
    * - ``MOD_MUL``
      - 有 PySparQ modular multiplication reference
      - dagger 使用 modular inverse multiplier。
-   * - ``QECGate``
-     - 无
-     - compiler-only adapter。
+   * - ``H`` / ``Z`` / ``SWAP`` / ``CPHASE`` / ``RX`` / ``RY`` / ``RZ`` / ``CCX`` / ``CMUL_MOD_N``
+     - 暂无通用 PySparQ reference
+     - 作为 QEC IR primitive 直接 lowering 到 ``AbstractGate``。
    * - ``QRAM`` / ``QRAMFast``
      - 当前禁用
      - pyqres wrappers 全部显式抛 ``NotImplementedError``。
