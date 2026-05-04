@@ -1,36 +1,59 @@
 安装
 ====
 
-系统要求
---------
-
-- Python 3.10+
-- pip 包管理器
-
-从源码安装
+单项目安装
 ----------
 
 .. code-block:: bash
 
-   git clone https://github.com/Agony5757/Quantum-Resource-Estimator.git
+   git clone https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator.git
    cd Quantum-Resource-Estimator
-   pip install -e .
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[test]"
 
-开发安装
---------
+``pysparq`` 是 pyqres 的依赖，用于 ``SimulatorVisitor``。如果需要运行 QEC integration，
+还需要让 ``qec_compiler`` 可导入。
 
-如需运行测试或开发：
+三项目联合安装
+--------------
+
+推荐目录结构：
+
+.. code-block:: text
+
+   connect-pysparq-pyqres-qecc/
+      Quantum-Resource-Estimator/
+      QRAM-Simulator/
+      QEC-compiler/
+
+QEC-Compiler 使用 ``uv``：
 
 .. code-block:: bash
 
-   pip install -e ".[test,dev]"
+   cd QEC-compiler
+   uv venv
+   source .venv/bin/activate
+   uv sync --all-extras
+
+pyqres 调用本地 QEC-Compiler 源码：
+
+.. code-block:: bash
+
+   cd Quantum-Resource-Estimator
+   PYTHONPATH=../QEC-compiler/src:. .venv/bin/python your_script.py
 
 验证安装
 --------
 
-.. code-block:: python
+.. code-block:: bash
 
-   import pyqres
-   # 导出核心类
-   from pyqres import Operation, Primitive, Composite
-   from pyqres import TCounter, TDepthCounter
+   cd Quantum-Resource-Estimator
+   .venv/bin/pyqres compile
+   .venv/bin/pyqres check
+
+   PYTHONPATH=../QEC-compiler/src:. .venv/bin/pytest \
+     tests/test_qec_examples_yaml.py \
+     tests/test_qec_lowering.py \
+     tests/test_intermediate_semantics.py \
+     tests/test_qram_unimplemented.py -q

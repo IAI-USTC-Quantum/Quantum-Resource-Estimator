@@ -215,3 +215,43 @@ class MOD_MUL(Primitive):
         qubits = list(qubit_map[self.reg])
         return [_lazy_abstract_gate("MOD_MUL", tuple(qubits),
                                     (self.multiplier, self.modulus))]
+
+
+class QECGate(Primitive):
+    """Compiler-only adapter for exact QEC-Compiler example mirroring.
+
+    ``QECGate`` is intentionally not a portable algorithm primitive. It exists
+    so YAML-defined pyqres examples can emit the same gate-level
+    ``AbstractCircuit`` as QEC-Compiler's curated benchmark builders while
+    still flowing through the normal pyqres DSL/generated Operation path.
+
+    ``param_list`` shape:
+        ``[gate_name: str, qubits: list[int], params: list[float]]``
+    """
+
+    def __init__(self, reg_list=None, param_list=None):
+        super().__init__(reg_list=reg_list, param_list=param_list or [])
+        self.register = reg_list[0] if reg_list else None
+        self.gate_name = str(self.param_list[0])
+        self.bit_indices = tuple(int(q) for q in self.param_list[1])
+        raw_params = self.param_list[2] if len(self.param_list) > 2 else []
+        self.gate_params = tuple(float(p) for p in raw_params)
+
+    def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
+        raise NotImplementedError(
+            "QECGate is a compiler-only adapter for AbstractCircuit emission; "
+            "it has no PySparQ reference implementation."
+        )
+
+    def t_count(self, dagger_ctx=False, controllers_ctx=None):
+        raise NotImplementedError(
+            "QECGate does not define pyqres resource semantics. Use the emitted "
+            "AbstractCircuit/QEC-Compiler pipeline for resource computation."
+        )
+
+    def to_abstract_gates(self, qubit_map):
+        if self.register not in qubit_map:
+            raise ValueError(f"Register {self.register!r} is not allocated for QECGate")
+        reg_qubits = qubit_map[self.register]
+        qubits = tuple(reg_qubits[index] for index in self.bit_indices)
+        return [_lazy_abstract_gate(self.gate_name, qubits, self.gate_params)]

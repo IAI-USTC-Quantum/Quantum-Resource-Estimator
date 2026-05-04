@@ -1,15 +1,19 @@
-import pysparq
-import numpy as np
+"""QRAM primitives.
+
+QRAM support is intentionally disabled in the current pyqres -> QEC-Compiler
+workflow. Direct PySparQ QRAM experiments can still be run outside pyqres, but
+the pyqres wrappers must not provide dummy memories or approximate references
+until a shared QRAM contract is defined.
+"""
 
 from ..core.operation import Primitive
-from ..core.utils import merge_controllers
-from ..core.simulator import PyQSparseOperationWrapper
 
 
-def _make_memory(data_id):
-    import warnings
-    warnings.warn("Using a dummy memory for QRAM. This is not a realistic implementation.")
-    return np.zeros(2 ** 3)
+_QRAM_DISABLED_MESSAGE = (
+    "pyqres QRAM primitives are intentionally disabled for the current "
+    "pyqres -> QEC-Compiler workflow. Use direct PySparQ QRAM experiments "
+    "outside pyqres, or wait for the future QRAM contract/reference fix."
+)
 
 
 class QRAM(Primitive):
@@ -17,52 +21,32 @@ class QRAM(Primitive):
         super().__init__(reg_list=reg_list, param_list=param_list)
         self.reg_addr = reg_list[0]
         self.reg_data = reg_list[1]
-        self.data_id = param_list[0]
-        self.memory = _make_memory(self.data_id)
-
-        # Get register sizes from metadata
-        from ..core.metadata import RegisterMetadata
-        meta = RegisterMetadata.get_register_metadata()
-        addr_size = meta.registers.get(self.reg_addr, {}).get('size', 3)
-        data_size = meta.registers.get(self.reg_data, {}).get('size', 64)
-
-        self.qram = pysparq.QRAMCircuit_qutrit(
-            addr_size=int(addr_size),
-            data_size=int(data_size),
-            memory=[int(x) for x in self.memory]
-        )
+        self.data_id = param_list[0] if param_list else None
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
-        return pysparq.QRAMLoad(self.qram, self.reg_addr, self.reg_data)
+        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
-        # QRAM resources are computed independently (QRAM_Count in the future).
-        # For now, exclude from T-count estimates.
-        return 0
+        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
 
 
 class QRAMFast(Primitive):
-    """Fast QRAM loading using the bucket-brigade protocol.
+    """Fast QRAM loading placeholder.
 
-    Loads data from a QRAM circuit at the address in addr_reg into data_reg.
-    Self-conjugate: loading the same address twice doesn't cancel (not self-adjoint
-    in general), but the operation itself is the same forward/inverse.
+    Kept as a registered primitive so existing YAML/Python definitions fail
+    explicitly instead of breaking imports.
     """
+
     __self_conjugate__ = True
 
     def __init__(self, reg_list, param_list):
         super().__init__(reg_list=reg_list, param_list=param_list)
-        self.qram = param_list[0]  # pysparq.QRAMCircuit_qutrit
+        self.qram = param_list[0] if param_list else None
         self.addr_reg = reg_list[0]
         self.data_reg = reg_list[1]
 
     def pyqsparse_object(self, dagger_ctx=False, controllers_ctx=None):
-        controllers_ctx = merge_controllers(self.controllers, controllers_ctx or {})
-        obj = PyQSparseOperationWrapper(
-            pysparq.QRAMLoadFast(self.qram, self.addr_reg, self.data_reg))
-        obj.set_controller(controllers_ctx)
-        return obj
+        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
 
     def t_count(self, dagger_ctx=False, controllers_ctx=None):
-        # QRAM resources are computed independently (QRAM_Count in the future).
-        return 0
+        raise NotImplementedError(_QRAM_DISABLED_MESSAGE)
