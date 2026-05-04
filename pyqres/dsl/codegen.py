@@ -752,6 +752,11 @@ class CodeGenerator:
         """Resolve a YAML expression into generated Python code."""
         import re as _re
 
+        # If expression already starts with "self.", it's already fully qualified,
+        # so avoid adding another "self." prefix (prevents self.self.x)
+        if expr.lstrip().startswith("self."):
+            return expr
+
         result = expr
         local_names = set(local_vars or {})
         if param_names:
