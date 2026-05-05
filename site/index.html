@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="PyQRES is a register-level quantum resource estimation toolkit for algorithm authoring, PySparQ simulation, QEC lowering, and QEOL workflows."
+    />
+    <title>PyQRES | Quantum Resource Estimation</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <canvas class="signal-canvas" id="signalCanvas" aria-hidden="true"></canvas>
+
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="PyQRES home">
+        <span class="brand-mark">Q</span>
+        <span>
+          <strong>PyQRES</strong>
+          <small>Quantum Resource Estimator</small>
+        </span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#install">安装</a>
+        <a href="docs/">文档</a>
+        <a href="#cases">案例</a>
+        <a href="https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Register-level authoring to QEC resource estimation</p>
+          <h1 id="hero-title">把量子算法从 DSL 推到 QEC 资源账本</h1>
+          <p class="hero-lede">
+            PyQRES 用 Python Operation tree 和 YAML DSL 描述量子算法，连接 PySparQ
+            小规模语义验证、QEC-Compiler lowering、逻辑调度与 QEOL 资源输出。
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button button-primary" href="#install">一键安装</a>
+            <a class="button button-secondary" href="docs/">打开文档</a>
+          </div>
+        </div>
+
+        <div class="terminal-panel" aria-label="PyQRES command preview">
+          <div class="terminal-bar">
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>pyqres estimate</strong>
+          </div>
+          <pre><code>$ pyqres estimate QDALinearSolver -m t_depth
+loading schemas: composites, qec_examples, state_prep
+lowering: Python Operation tree -> AbstractCircuit
+backend: QEC-Compiler logical schedule
+
+T-count        4.82e+07
+T-depth        1.16e+06
+Toffoli-count  8.03e+06
+QEOL artifact  runs/qda_tridiagonal/qeol.json</code></pre>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="PyQRES pipeline summary">
+        <article>
+          <span>01</span>
+          <strong>YAML / Python</strong>
+          <p>用结构化 DSL 或 Operation tree 快速定义算法。</p>
+        </article>
+        <article>
+          <span>02</span>
+          <strong>PySparQ</strong>
+          <p>在支持的 primitive 上做 register-level 语义验证。</p>
+        </article>
+        <article>
+          <span>03</span>
+          <strong>QEC Lowering</strong>
+          <p>落到 QEC-Compiler AbstractCircuit 并进入资源计算链路。</p>
+        </article>
+      </section>
+
+      <section class="install-section" id="install" aria-labelledby="install-title">
+        <div>
+          <p class="eyebrow">Install</p>
+          <h2 id="install-title">一条命令开始估算</h2>
+          <p>
+            入口命令适合直接试用最新版。开发与 QEC 集成环境可以从文档继续配置
+            PySparQ、QEC-Compiler 和本地测试依赖。
+          </p>
+        </div>
+        <div class="install-grid">
+          <div class="command-card">
+            <div class="command-head">
+              <span>Latest from GitHub</span>
+              <button class="copy-button" type="button" data-copy="python -m pip install &quot;pyqres @ git+https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator.git&quot;">
+                Copy
+              </button>
+            </div>
+            <pre><code>python -m pip install "pyqres @ git+https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator.git"</code></pre>
+          </div>
+          <div class="command-card muted">
+            <div class="command-head">
+              <span>Developer checkout</span>
+              <button class="copy-button" type="button" data-copy="git clone https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator.git && cd Quantum-Resource-Estimator && python -m pip install -e &quot;.[test]&quot;">
+                Copy
+              </button>
+            </div>
+            <pre><code>git clone https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator.git
+cd Quantum-Resource-Estimator
+python -m pip install -e ".[test]"</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="docs-band" aria-labelledby="docs-title">
+        <div>
+          <p class="eyebrow">Documentation</p>
+          <h2 id="docs-title">原文档现在作为产品文档中心</h2>
+          <p>
+            快速开始、工作流、核心概念、资源估计、模拟可视化、CLI 和 API 参考统一放在
+            <strong>/docs/</strong> 路径下。
+          </p>
+        </div>
+        <a class="button button-primary" href="docs/">进入文档</a>
+      </section>
+
+      <section class="cases-section" id="cases" aria-labelledby="cases-title">
+        <div class="section-heading">
+          <p class="eyebrow">Use cases</p>
+          <h2 id="cases-title">从算法草稿到资源结果</h2>
+        </div>
+        <div class="case-tabs" role="tablist" aria-label="PyQRES use cases">
+          <button class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="case-qda" id="tab-qda">
+            QDA Linear Solver
+          </button>
+          <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="case-qec" id="tab-qec">
+            QEC Examples
+          </button>
+          <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="case-viz" id="tab-viz">
+            Visualization
+          </button>
+        </div>
+
+        <div class="case-panel is-active" id="case-qda" role="tabpanel" aria-labelledby="tab-qda">
+          <div>
+            <h3>QDA 三对角线性系统</h3>
+            <p>
+              以 register-level block encoding 和 QDA workflow 描述线性求解器，
+              对 2x2 到 8x8 规模做 lowering、资源估计和逻辑层输出验证。
+            </p>
+            <a href="docs/workflow/qda_tridiagonal.html">查看案例</a>
+          </div>
+          <pre><code>from pyqres.generated import QDALinearSolver
+from pyqres.core.lowering import to_abstract_circuit
+
+circuit = to_abstract_circuit(QDALinearSolver(["sys"], [3]))
+print(circuit.num_qubits)</code></pre>
+        </div>
+
+        <div class="case-panel" id="case-qec" role="tabpanel" aria-labelledby="tab-qec" hidden>
+          <div>
+            <h3>QEC benchmark mirrors</h3>
+            <p>
+              GHZ、QFT、QPE、Grover、QAOA、VQE、Small Shor 等 gate-level YAML
+              mirrors 可用于对齐 QEC-Compiler benchmark builder。
+            </p>
+            <a href="docs/workflow/yaml_qec_examples.html">查看案例</a>
+          </div>
+          <pre><code>pyqres show QECExampleQFT --depth 3
+pyqres estimate QECExampleGrover -m toffoli_count</code></pre>
+        </div>
+
+        <div class="case-panel" id="case-viz" role="tabpanel" aria-labelledby="tab-viz" hidden>
+          <div>
+            <h3>资源树与线路可视化</h3>
+            <p>
+              为 Operation tree 生成交互式 HTML，快速定位算法分解、register 结构、
+              primitive 调用和估算热点。
+            </p>
+            <a href="docs/visualization/index.html">查看案例</a>
+          </div>
+          <pre><code>from pyqres.visualization.html import render_operation_tree
+
+render_operation_tree(program, "runs/call_tree.html")</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>PyQRES</span>
+      <a href="docs/">Docs</a>
+      <a href="https://github.com/IAI-USTC-Quantum/Quantum-Resource-Estimator">GitHub</a>
+    </footer>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

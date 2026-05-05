@@ -1,5 +1,6 @@
 pyqres.egg-info/
 build/
+.venv-pages/
 __pycache__/
 *.tex
 /pdf_outputs
@@ -8,6 +9,7 @@ __pycache__/
 
 # Sphinx documentation build
 docs/build/
+_site/
 
 # QEOL output artifacts
 runs/
