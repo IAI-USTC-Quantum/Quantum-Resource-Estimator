@@ -55,6 +55,13 @@ class CodeGenerator:
         # Store param type map for for_each range() vs direct-iteration decisions
         self._param_type_map = {p["name"]: p.get("type", "int") for p in defn.get("params", [])}
 
+        # Store declared operation params for symbol lookup
+        # When op name matches a declared 'type: operation' param, generate self.{name}() instead of OperationRegistry.get_class()
+        self._declared_op_params = {
+            p["name"] for p in defn.get("params", [])
+            if isinstance(p, dict) and p.get("type") == "operation"
+        }
+
         imports = self._generate_imports(base_class, defn)
 
         # Extract dependencies from impl
@@ -273,11 +280,13 @@ class CodeGenerator:
         return any(k in item for k in ("loop", "loop_reverse", "if", "comment", "for_each", "python"))
 
     def _serialize_impl(self, impl: List[Dict[str, Any]]) -> str:
-        """Serialize the impl structure for storage."""
+        """Serialize the impl structure for storage as Python code."""
         import json
         # Convert to JSON-serializable form
         serializable = self._make_serializable(impl)
-        return json.dumps(serializable)
+        # Convert JSON booleans to Python booleans for valid Python syntax
+        json_str = json.dumps(serializable)
+        return json_str.replace('true', 'True').replace('false', 'False')
 
     def _make_serializable(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert impl items to JSON-serializable format."""
@@ -447,7 +456,12 @@ class CodeGenerator:
             params_str = ", ".join(resolved_params)
             args.append(f"param_list=[{params_str}]")
 
-        base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
+        # Symbol lookup: if op_name is a declared 'type: operation' param, use self.{name}()
+        # Otherwise, use OperationRegistry.get_class() for registered operations
+        if self._declared_op_params and op_name in self._declared_op_params:
+            base = f'self.{op_name}({", ".join(args)})'
+        else:
+            base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
 
         if call.get("dagger"):
             base += ".dagger()"
@@ -505,7 +519,12 @@ class CodeGenerator:
         if temp_out:
             args.append(f"# temp_out: {temp_out}")
 
-        base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
+        # Symbol lookup: if op_name is a declared 'type: operation' param, use self.{name}()
+        # Otherwise, use OperationRegistry.get_class() for registered operations
+        if self._declared_op_params and op_name in self._declared_op_params:
+            base = f'self.{op_name}({", ".join(args)})'
+        else:
+            base = f'OperationRegistry.get_class("{op_name}")({", ".join(args)})'
 
         # dagger
         if call.get("dagger"):

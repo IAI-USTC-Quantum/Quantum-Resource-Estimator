@@ -37,6 +37,7 @@ class DSLCompiler:
         self.generator = CodeGenerator()
         self.warnings: List[str] = []
         self.library_definitions: Dict[str, Dict[str, Any]] = {}
+        self._import_stack: List[str] = []  # Track import stack for cycle detection
 
         # Load library definitions if provided
         if library_paths:
@@ -73,6 +74,88 @@ class DSLCompiler:
             definitions = [definitions]
         return definitions
 
+    def _resolve_imports(self, definitions: List[Dict[str, Any]],
+                         source_path: Path) -> List[Dict[str, Any]]:
+        """Resolve 'imports' field in definitions, recursively expanding them.
+
+        Supports two syntaxes:
+        - List of strings: imports: [file1.yml, file2.yml]
+        - List of dicts: imports: [{file: file.yml, name: AliasName}]
+
+        Args:
+            definitions: YAML definitions list
+            source_path: Path of the file containing these definitions (for relative resolution)
+
+        Returns:
+            Flattened definitions with imports expanded inline
+        """
+        resolved = []
+        for defn in definitions:
+            if "imports" in defn:
+                import_specs = defn["imports"]
+                if not isinstance(import_specs, list):
+                    self.warnings.append(
+                        f"'imports' in '{defn.get('name', '?')}' must be a list, got {type(import_specs).__name__}")
+                    resolved.append(defn)
+                    continue
+
+                for spec in import_specs:
+                    # Parse import spec: string path or dict {file: path, name: alias}
+                    if isinstance(spec, str):
+                        import_path = spec
+                        alias = None
+                    elif isinstance(spec, dict):
+                        import_path = spec.get("file", "")
+                        alias = spec.get("name")
+                    else:
+                        self.warnings.append(
+                            f"Invalid import spec: {spec}, expected string or dict")
+                        continue
+
+                    if not import_path:
+                        self.warnings.append(f"Empty import path in '{defn.get('name', '?')}'")
+                        continue
+
+                    # Resolve relative path from source file's directory
+                    try:
+                        resolved_path = (source_path.parent / import_path).resolve()
+                    except Exception as e:
+                        self.warnings.append(f"Invalid import path '{import_path}': {e}")
+                        continue
+
+                    resolved_path_str = str(resolved_path)
+
+                    # Cycle detection
+                    if resolved_path_str in self._import_stack:
+                        raise CompilationError(
+                            f"Circular import detected: {resolved_path} "
+                            f"(import stack: {' -> '.join(self._import_stack + [resolved_path_str])})"
+                        )
+
+                    # Load imported definitions
+                    self._import_stack.append(resolved_path_str)
+                    try:
+                        imported_defs = self._load_definitions_from_file(resolved_path)
+                        # Recursively resolve nested imports
+                        imported_defs = self._resolve_imports(imported_defs, resolved_path)
+                    finally:
+                        self._import_stack.pop()
+
+                    # Add imported definitions (with optional alias)
+                    for imp_def in imported_defs:
+                        if alias:
+                            # Create a renamed copy
+                            renamed = dict(imp_def)
+                            renamed["name"] = alias
+                            resolved.append(renamed)
+                        else:
+                            resolved.append(imp_def)
+
+            # Add the definition itself (after processing its imports)
+            resolved.append(defn)
+
+        return resolved
+
     def get_library_operation(self, name: str) -> Optional[Dict[str, Any]]:
         """Get a library operation definition by name."""
         return self.library_definitions.get(name)
@@ -95,6 +178,9 @@ class DSLCompiler:
 
         if not isinstance(definitions, list):
             definitions = [definitions]
+
+        # Resolve imports (relative to the source file's directory)
+        definitions = self._resolve_imports(definitions, source_path=path)
 
         return self._compile_definitions(definitions, output_dir)
 
@@ -161,8 +247,12 @@ class DSLCompiler:
     def _compile_definitions(self, definitions: List[Dict[str, Any]],
                              output_dir: Optional[str] = None) -> List[GeneratedClass]:
         """Compile definitions: validate -> generate -> write."""
-        # Validate with known operations
+        # Validate with known operations (including imported definitions)
         known_ops = self._get_known_operations()
+        # Add all definition names to known_ops for cross-referencing
+        for defn in definitions:
+            if "name" in defn:
+                known_ops.add(defn["name"])
         errors = self.validator.validate(definitions, known_ops)
         if errors:
             error_msgs = [str(e) for e in errors]
